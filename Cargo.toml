@@ -9,3 +9,4 @@ edition = "2021"
 candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.3.1" }
 candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.3.1" }
 anyhow = "1.0.75"
+clap = { version = "4.4.10", features = ["derive"] }

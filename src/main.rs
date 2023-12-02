@@ -1,22 +1,54 @@
-use candle_core::{Device, Tensor, Error};
+use std::collections::BTreeSet;
+use std::fs::File;
+use std::io;
+use std::io::Read;
+use std::iter::FromIterator;
 
-fn tensor_example() -> Result<String, Error> {
-    let data: [u32; 3] = [1u32, 2, 3];
-    let tensor = Tensor::new(&data, &Device::Cpu)?;
-    println!("tensor: {:?}", tensor.to_vec1::<u32>()?);
+use clap::Parser;
 
-    let nested_data: [[u32; 3]; 3] = [[1u32, 2, 3], [4, 5, 6], [7, 8, 9]];
-    let nested_tensor = Tensor::new(&nested_data, &Device::Cpu)?;
-    println!("nested_tensor: {:?}", nested_tensor.to_vec2::<u32>()?);
+use args::Args;
 
-    Ok("Ok".to_string())
+mod args;
+
+fn load_file(path: String) -> Result<String, io::Error> {
+    let mut file = File::open(path)?; // ? operator used for error propagation
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+
+    Ok(contents)
+}
+
+fn unique_chars(s: String) -> BTreeSet<char> {
+    let mut char_set = BTreeSet::new();
+
+    for c in s.chars() {
+        char_set.insert(c);
+    }
+    char_set
 }
 
 fn main() {
-    match tensor_example() {
-        Ok(message) => println!("Terminated with {}", message),
-        Err(error) => eprintln!("Error: {}", error)
-    }
+    let args = Args::parse();
+
+    let raw_contents = match load_file(args.input_path) {
+        Ok(contents) => {
+            println!("Loaded {} characters", contents.len());
+            contents
+        },
+        Err(error) => {
+            eprintln!("Error: {}", error);
+            String::new()
+        }
+    };
+    println!("First 1000 characters: {}", &raw_contents[0..1000]);
+
+    let char_set = unique_chars(raw_contents);
+    let char_string: String = char_set.clone().into_iter().collect();
+    println!("Char set: {}", char_string);
+    println!("Char set size: {}", char_set.len());
+
+
 }
 
 
