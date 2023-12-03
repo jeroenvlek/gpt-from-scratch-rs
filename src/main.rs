@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::iter::FromIterator;
+use candle_core::{Device, Shape, Tensor};
 
 use clap::Parser;
 
@@ -37,12 +38,18 @@ fn main() {
     };
     println!("First 1000 characters: {}", &raw_contents[0..1000]);
 
-    let char_set_transcoder = CharSetTranscoder::new(raw_contents);
+    let char_set_transcoder = CharSetTranscoder::new(raw_contents.clone());
     let char_string: String = char_set_transcoder.char_set.clone().into_iter().collect();
     println!("Char set: {}", char_string);
     println!("Char set size: {}", char_set_transcoder.char_set.len());
     println!("{:?}", char_set_transcoder.encode(String::from("hii there")));
     println!("{}", char_set_transcoder.decode(char_set_transcoder.encode(String::from("hii there"))));
+
+    let encoded = char_set_transcoder.encode(raw_contents);
+    let device = &Device::Cpu;
+    let data = Tensor::from_vec(encoded.clone(), Shape::from(encoded.len()), device).unwrap();
+    println!("shape: {:?}, dtype: {:?}", data.shape(), data.dtype());
+    println!("First 1000 indices from tensor: {:?}", &data.to_vec1::<u32>().unwrap()[0..1000]);
 }
 
 
