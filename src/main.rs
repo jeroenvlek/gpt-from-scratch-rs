@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::fs::File;
 use std::io;
 use std::io::Read;
@@ -8,7 +7,10 @@ use clap::Parser;
 
 use args::Args;
 
+use crate::char_set_transcoder::CharSetTranscoder;
+
 mod args;
+mod char_set_transcoder;
 
 fn load_file(path: String) -> Result<String, io::Error> {
     let mut file = File::open(path)?; // ? operator used for error propagation
@@ -19,14 +21,6 @@ fn load_file(path: String) -> Result<String, io::Error> {
     Ok(contents)
 }
 
-fn unique_chars(s: String) -> BTreeSet<char> {
-    let mut char_set = BTreeSet::new();
-
-    for c in s.chars() {
-        char_set.insert(c);
-    }
-    char_set
-}
 
 fn main() {
     let args = Args::parse();
@@ -35,7 +29,7 @@ fn main() {
         Ok(contents) => {
             println!("Loaded {} characters", contents.len());
             contents
-        },
+        }
         Err(error) => {
             eprintln!("Error: {}", error);
             String::new()
@@ -43,12 +37,10 @@ fn main() {
     };
     println!("First 1000 characters: {}", &raw_contents[0..1000]);
 
-    let char_set = unique_chars(raw_contents);
-    let char_string: String = char_set.clone().into_iter().collect();
+    let char_set_transcoder = CharSetTranscoder::new(raw_contents);
+    let char_string: String = char_set_transcoder.char_set.clone().into_iter().collect();
     println!("Char set: {}", char_string);
-    println!("Char set size: {}", char_set.len());
-
-
+    println!("Char set size: {}", char_set_transcoder.char_set.len());
 }
 
 
