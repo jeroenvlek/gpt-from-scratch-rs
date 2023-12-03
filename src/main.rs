@@ -41,6 +41,8 @@ fn main() {
     let char_string: String = char_set_transcoder.char_set.clone().into_iter().collect();
     println!("Char set: {}", char_string);
     println!("Char set size: {}", char_set_transcoder.char_set.len());
+    println!("{:?}", char_set_transcoder.encode(String::from("hii there")));
+    println!("{}", char_set_transcoder.decode(char_set_transcoder.encode(String::from("hii there"))));
 }
 
 
