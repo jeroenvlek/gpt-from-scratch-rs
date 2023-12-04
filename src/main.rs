@@ -57,6 +57,16 @@ fn main() {
     let validation_size = encoded.len() - training_size;
     let validation_data = Tensor::from_vec(encoded.iter().rev().take(validation_size).cloned().collect(), Shape::from(validation_size), device).unwrap();
     println!("Validation data shape: {:?}, dtype: {:?}", validation_data.shape(), validation_data.dtype());
+
+    let block_size = 8;
+    let training_vec = training_data.to_vec1::<u32>().unwrap();
+    println!("First block of training data: {:?}", &training_vec[0..block_size]);
+
+    for target_index in 1..block_size {
+        let context = &training_vec[0..target_index];
+        let target = training_vec.get(target_index).unwrap();
+        println!("when input is {:?} the target: {:?}", context, target)
+    }
 }
 
 
