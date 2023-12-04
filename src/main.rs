@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io;
 use std::io::Read;
 
-use candle_core::{Device, Shape, Tensor};
+use candle_core::{Device, Shape, Tensor, IndexOp};
 use clap::Parser;
 
 use args::Args;
@@ -21,6 +21,9 @@ fn load_file(path: String) -> Result<String, io::Error> {
     Ok(contents)
 }
 
+// fn random_batch(data: Tensor, batch_size: u32, block_size: u32) -> Tensor {
+//
+// }
 
 fn main() {
     let args = Args::parse();
@@ -48,25 +51,27 @@ fn main() {
     let device = &Device::Cpu;
     let data = Tensor::from_vec(encoded.clone(), Shape::from(encoded.len()), device).unwrap();
     println!("Data shape: {:?}, dtype: {:?}", data.shape(), data.dtype());
-    println!("First 1000 indices from tensor: {:?}", &data.to_vec1::<u32>().unwrap()[0..1000]);
+    println!("First 1000 indices from tensor: {:?}", &data.i(0..1000));
 
-    let training_size = (encoded.len() as f64 * 0.9) as usize;
-    let training_data = Tensor::from_vec(encoded.iter().take(training_size).cloned().collect(), Shape::from(training_size), device).unwrap();
+    let data_size = *data.shape().dims().first().unwrap();
+    let training_size = (data_size as f64 * 0.9) as usize;
+    let training_data = data.i(0..training_size).unwrap();
     println!("Training data shape: {:?}, dtype: {:?}", training_data.shape(), training_data.dtype());
 
-    let validation_size = encoded.len() - training_size;
-    let validation_data = Tensor::from_vec(encoded.iter().rev().take(validation_size).cloned().collect(), Shape::from(validation_size), device).unwrap();
+    let validation_size = data_size - training_size;
+    let validation_data = data.i(0..validation_size).unwrap();
     println!("Validation data shape: {:?}, dtype: {:?}", validation_data.shape(), validation_data.dtype());
 
     let block_size = 8;
-    let training_vec = training_data.to_vec1::<u32>().unwrap();
-    println!("First block of training data: {:?}", &training_vec[0..block_size]);
+    println!("First block of training data: {:?}", &training_data.i(0..block_size).unwrap());
 
     for target_index in 1..block_size {
-        let context = &training_vec[0..target_index];
-        let target = training_vec.get(target_index).unwrap();
+        let context = &training_data.i(0..target_index).unwrap();
+        let target = training_data.i(target_index).unwrap();
         println!("when input is {:?} the target: {:?}", context, target)
     }
+
+    // let batch_size = 4;
 }
 
 
