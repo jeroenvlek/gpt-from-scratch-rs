@@ -7,12 +7,14 @@ use clap::Parser;
 
 use args::Args;
 
+use crate::bigram_language_model::BigramLanguageModel;
 use crate::char_set_transcoder::CharSetTranscoder;
 use crate::dataset::Dataset;
 
 mod args;
 mod char_set_transcoder;
 mod dataset;
+mod bigram_language_model;
 
 fn load_file(path: String) -> Result<String, io::Error> {
     let mut file = File::open(path)?; // ? operator used for error propagation
@@ -66,7 +68,7 @@ fn main() {
     }
 
     let batch_size = 4usize;
-    let (stacked_contexts, stacked_targets) = dataset.random_batch(block_size, batch_size);
+    let (stacked_contexts, stacked_targets) = dataset.random_training_batch(block_size, batch_size);
     println!("inputs:");
     println!("Contexts (xb) shape: {:?}", stacked_contexts.shape());
     println!("targets:");
@@ -78,6 +80,12 @@ fn main() {
             let target = stacked_targets.i(b).unwrap().i(t).unwrap();
             println!("when input is {:?} the target: {:?}", context, target);
         }
+    }
+
+    let model = BigramLanguageModel::new(char_set_transcoder.char_set.len(), char_set_transcoder.char_set.len(), device);
+    match model.train(dataset, 100, 32) {
+        Ok(_) => println!("Finished training the model"),
+        Err(error) => eprintln!("Error training the model: {}", error)
     }
 }
 

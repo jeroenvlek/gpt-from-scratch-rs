@@ -23,7 +23,7 @@ impl CharSetTranscoder {
             index_to_char.insert(i as u32, *c);
         }
 
-        CharSetTranscoder { char_set, char_to_index, index_to_char }
+        Self { char_set, char_to_index, index_to_char }
     }
 
     pub fn encode(&self, s: String) -> Vec<u32> {

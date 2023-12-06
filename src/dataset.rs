@@ -21,10 +21,10 @@ impl Dataset {
         let validation_data = data.i(0..validation_size).unwrap();
         let rng: ThreadRng = rand::thread_rng();
 
-        Dataset { training_data, training_size, validation_data, validation_size, rng }
+        Self { training_data, training_size, validation_data, validation_size, rng }
     }
 
-    pub fn random_batch(&mut self, block_size: usize, batch_size: usize) -> (Tensor, Tensor) {
+    pub fn random_training_batch(&mut self, block_size: usize, batch_size: usize) -> (Tensor, Tensor) {
         let max_block_indices: Vec<usize> = (0..batch_size)
             .map(|_|
                 self.rng.gen_range(0..self.training_size - block_size)
