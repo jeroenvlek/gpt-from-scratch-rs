@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io;
 use std::io::Read;
 
-use candle_core::{Device, IndexOp, Shape, Tensor};
+use candle_core::{Device, DType, IndexOp, Shape, Tensor};
 use clap::Parser;
 
 use args::Args;
@@ -84,7 +84,7 @@ fn main() {
     }
 
     let batch_size = 4usize;
-    let (stacked_contexts, stacked_targets) = dataset.random_training_batch(block_size, batch_size);
+    let (stacked_contexts, stacked_targets) = dataset.random_training_batch(block_size, batch_size).unwrap();
     println!("inputs:");
     println!("Contexts (xb) shape: {:?}", stacked_contexts.shape());
     println!("targets:");
@@ -98,13 +98,21 @@ fn main() {
         }
     }
 
-    let model = BigramLanguageModel::new(
+    let mut model = BigramLanguageModel::new(
         char_set_transcoder.char_set.len(),
         char_set_transcoder.char_set.len(),
-        device,
+        device
     );
     match model.train(dataset, 100, 32) {
         Ok(_) => println!("Finished training the model"),
-        Err(error) => eprintln!("Error training the model: {}", error),
+        Err(error) => eprintln!("Error training the model: {}", error)
+    }
+
+    match model.generate(Tensor::zeros(Shape::from((1, 1)), DType::U32, device).unwrap(), 500) {
+        Ok(generated_ids) => {
+            let decoded = char_set_transcoder.decode(generated_ids.to_vec1().unwrap());
+            println!("Bigram model generated: {}", decoded);
+        }
+        Err(error) => eprintln!("Error generating characters with bigram model: {}", error)
     }
 }
