@@ -12,9 +12,9 @@ use crate::char_set_transcoder::CharSetTranscoder;
 use crate::dataset::Dataset;
 
 mod args;
+mod bigram_language_model;
 mod char_set_transcoder;
 mod dataset;
-mod bigram_language_model;
 
 fn load_file(path: String) -> Result<String, io::Error> {
     let mut file = File::open(path)?; // ? operator used for error propagation
@@ -24,7 +24,6 @@ fn load_file(path: String) -> Result<String, io::Error> {
 
     Ok(contents)
 }
-
 
 fn main() {
     let args = Args::parse();
@@ -45,8 +44,14 @@ fn main() {
     let char_string: String = char_set_transcoder.char_set.clone().into_iter().collect();
     println!("Char set: {}", char_string);
     println!("Char set size: {}", char_set_transcoder.char_set.len());
-    println!("{:?}", char_set_transcoder.encode(String::from("hii there")));
-    println!("{}", char_set_transcoder.decode(char_set_transcoder.encode(String::from("hii there"))));
+    println!(
+        "{:?}",
+        char_set_transcoder.encode(String::from("hii there"))
+    );
+    println!(
+        "{}",
+        char_set_transcoder.decode(char_set_transcoder.encode(String::from("hii there")))
+    );
 
     let encoded = char_set_transcoder.encode(raw_contents);
     let device = &Device::Cpu;
@@ -55,11 +60,22 @@ fn main() {
     println!("First 1000 indices from tensor: {:?}", &data.i(0..1000));
 
     let mut dataset = Dataset::new(data, 0.9);
-    println!("Training data shape: {:?}, dtype: {:?}", dataset.training_data.shape(), dataset.training_data.dtype());
-    println!("Validation data shape: {:?}, dtype: {:?}", dataset.validation_data.shape(), dataset.validation_data.dtype());
+    println!(
+        "Training data shape: {:?}, dtype: {:?}",
+        dataset.training_data.shape(),
+        dataset.training_data.dtype()
+    );
+    println!(
+        "Validation data shape: {:?}, dtype: {:?}",
+        dataset.validation_data.shape(),
+        dataset.validation_data.dtype()
+    );
 
     let block_size = 8usize;
-    println!("First block of training data: {:?}", &dataset.training_data.i(0..block_size).unwrap());
+    println!(
+        "First block of training data: {:?}",
+        &dataset.training_data.i(0..block_size).unwrap()
+    );
 
     for target_index in 1..block_size {
         let context = &dataset.training_data.i(0..target_index).unwrap();
@@ -82,11 +98,13 @@ fn main() {
         }
     }
 
-    let model = BigramLanguageModel::new(char_set_transcoder.char_set.len(), char_set_transcoder.char_set.len(), device);
+    let model = BigramLanguageModel::new(
+        char_set_transcoder.char_set.len(),
+        char_set_transcoder.char_set.len(),
+        device,
+    );
     match model.train(dataset, 100, 32) {
         Ok(_) => println!("Finished training the model"),
-        Err(error) => eprintln!("Error training the model: {}", error)
+        Err(error) => eprintln!("Error training the model: {}", error),
     }
 }
-
-

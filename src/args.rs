@@ -5,5 +5,4 @@ use clap::Parser;
 pub struct Args {
     #[arg(short, long)]
     pub input_path: String,
-
 }

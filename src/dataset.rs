@@ -1,6 +1,6 @@
 use candle_core::{IndexOp, Tensor};
-use rand::Rng;
 use rand::rngs::ThreadRng;
+use rand::Rng;
 
 #[derive(Debug)]
 pub struct Dataset {
@@ -21,25 +21,36 @@ impl Dataset {
         let validation_data = data.i(0..validation_size).unwrap();
         let rng: ThreadRng = rand::thread_rng();
 
-        Self { training_data, training_size, validation_data, validation_size, rng }
+        Self {
+            training_data,
+            training_size,
+            validation_data,
+            validation_size,
+            rng,
+        }
     }
 
-    pub fn random_training_batch(&mut self, block_size: usize, batch_size: usize) -> (Tensor, Tensor) {
+    pub fn random_training_batch(
+        &mut self,
+        block_size: usize,
+        batch_size: usize,
+    ) -> (Tensor, Tensor) {
         let max_block_indices: Vec<usize> = (0..batch_size)
-            .map(|_|
-                self.rng.gen_range(0..self.training_size - block_size)
-            ).collect();
+            .map(|_| self.rng.gen_range(0..self.training_size - block_size))
+            .collect();
 
-        let context_rows = max_block_indices.iter()
-            .map(|&max_index|
-                self.training_data.i(max_index..max_index + block_size).unwrap()
-            );
+        let context_rows = max_block_indices.iter().map(|&max_index| {
+            self.training_data
+                .i(max_index..max_index + block_size)
+                .unwrap()
+        });
         let stacked_contexts = Tensor::stack(&context_rows.collect::<Vec<_>>(), 0).unwrap();
 
-        let target_rows = max_block_indices.iter()
-            .map(|&max_index|
-                self.training_data.i(max_index + 1..max_index + block_size + 1).unwrap()
-            );
+        let target_rows = max_block_indices.iter().map(|&max_index| {
+            self.training_data
+                .i(max_index + 1..max_index + block_size + 1)
+                .unwrap()
+        });
         let stacked_targets = Tensor::stack(&target_rows.collect::<Vec<_>>(), 0).unwrap();
 
         (stacked_contexts, stacked_targets)
