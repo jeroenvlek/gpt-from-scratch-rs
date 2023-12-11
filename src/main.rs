@@ -103,7 +103,7 @@ fn main() {
         char_set_transcoder.char_set.len(),
         device,
     );
-    match model.train(dataset, 1000, 32) {
+    match model.train(dataset, args.num_epochs, 32) {
         Ok(_) => println!("Finished training the model"),
         Err(error) => eprintln!("Error training the model: {}", error)
     }

@@ -5,4 +5,7 @@ use clap::Parser;
 pub struct Args {
     #[arg(short, long)]
     pub input_path: String,
+
+    #[arg(short, long, default_value_t = 100)]
+    pub num_epochs: usize
 }
