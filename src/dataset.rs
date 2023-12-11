@@ -1,6 +1,6 @@
-use candle_core::{IndexOp, Tensor, Result};
-use rand::rngs::ThreadRng;
+use candle_core::{IndexOp, Result, Tensor};
 use rand::Rng;
+use rand::rngs::ThreadRng;
 
 #[derive(Debug)]
 pub struct Dataset {
@@ -12,7 +12,7 @@ pub struct Dataset {
 }
 
 impl Dataset {
-    pub fn new(data: Tensor, training_ratio: f64,) -> Self {
+    pub fn new(data: Tensor, training_ratio: f64) -> Self {
         let data_size = *data.shape().dims().first().unwrap();
         let training_size = (data_size as f64 * training_ratio) as usize;
         let training_data = data.i(0..training_size).unwrap();
@@ -26,7 +26,7 @@ impl Dataset {
             training_size,
             validation_data,
             validation_size,
-            rng
+            rng,
         }
     }
 
@@ -41,7 +41,7 @@ impl Dataset {
 
         let context_rows = max_block_indices.iter()
             .map(|&max_index| self.training_data.i(max_index..max_index + block_size).unwrap()
-        );
+            );
         let stacked_contexts = Tensor::stack(&context_rows.collect::<Vec<_>>(), 0)?;
 
         let target_rows = max_block_indices.iter().map(|&max_index|

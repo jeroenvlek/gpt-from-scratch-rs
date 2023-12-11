@@ -1,6 +1,6 @@
-use candle_core::{DType, Device, Result, Error, Shape, Tensor, D, IndexOp};
+use candle_core::{Device, DType, Error, IndexOp, Result, Shape, Tensor};
 use candle_nn::{Module, ops};
-use candle_nn::{loss, AdamW, Embedding, Optimizer, ParamsAdamW, VarBuilder, VarMap};
+use candle_nn::{AdamW, Embedding, loss, Optimizer, ParamsAdamW, VarBuilder, VarMap};
 use rand::distributions::Distribution;
 use rand::prelude::ThreadRng;
 
@@ -21,12 +21,12 @@ impl BigramLanguageModel {
             .get((vocab_size, hidden_size), "embeddings")
             .unwrap();
         let token_embedding_table = Embedding::new(embeddings, hidden_size);
-        let rng =rand::thread_rng();
+        let rng = rand::thread_rng();
         Self {
             vocab_size,
             token_embedding_table,
             var_map,
-            rng
+            rng,
         }
     }
 
@@ -42,7 +42,7 @@ impl BigramLanguageModel {
             let (batch_size, time_size, channel_size) = logits.shape().dims3()?;
             let loss = loss::cross_entropy(
                 &logits.reshape(Shape::from((batch_size * time_size, channel_size)))?,
-                &training_targets.reshape(Shape::from((batch_size * time_size,)))?,
+                &training_targets.reshape(Shape::from((batch_size * time_size, )))?,
             )?;
             optimizer.backward_step(&loss)?;
 
@@ -56,21 +56,21 @@ impl BigramLanguageModel {
     }
 
     fn sample_multinomial(&mut self, prs: &Vec<f32>) -> Result<u32> {
-        let distr = rand::distributions::WeightedIndex::new(prs).map_err(Error::wrap)?;
-        let next_token = distr.sample(&mut self.rng) as u32;
+        let distribution = rand::distributions::WeightedIndex::new(prs).map_err(Error::wrap)?;
+        let next_token = distribution.sample(&mut self.rng) as u32;
         Ok(next_token)
     }
 
-    pub fn generate(&mut self, inputs: Tensor, max_new_tokens: usize) -> Result<Tensor> {
-        let mut generated_ids = inputs;
-        for _ in 0..max_new_tokens {
-            let logits = self.forward(&generated_ids)?;
-            let (batch_size, time_size, channel_size) = logits.shape().dims3()?;
-            let most_recent_logits = logits.squeeze(1)?;
-            let probabilities = ops::softmax(&most_recent_logits, D::Minus1)?;
-            let next_token = self.sample_multinomial(&probabilities.to_vec2().unwrap().first().unwrap())?;
-            let to_stack = [&generated_ids, &Tensor::try_from(next_token)?];
-            generated_ids = Tensor::stack(&to_stack[..], 1)?;
+    pub fn generate(&mut self, max_new_tokens: usize, device: &Device) -> Result<Vec<u32>> {
+        let mut generated_ids: Vec<u32> = Vec::with_capacity(max_new_tokens);
+        generated_ids.push(0); // Karpathy uses idx = torch.zeros((1, 1)
+        for i in 1..max_new_tokens {
+            let logits = self.forward(&Tensor::from_vec(generated_ids.clone(), Shape::from(i), device)?)?;
+            let most_recent_logits = logits.i((i - 1, ..))?;
+            let probabilities = ops::softmax(&most_recent_logits, 0)?;
+            let vec = probabilities.to_vec1()?;
+            let next_token = self.sample_multinomial(&vec)?;
+            generated_ids.push(next_token);
         }
 
         Ok(generated_ids)
