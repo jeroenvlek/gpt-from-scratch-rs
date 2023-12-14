@@ -7,12 +7,12 @@ use clap::Parser;
 
 use args::Args;
 
-use crate::bigram_language_model::BigramLanguageModel;
+use crate::simple_bigram_language_model::SimpleBigramLanguageModel;
 use crate::char_set_transcoder::CharSetTranscoder;
 use crate::dataset::Dataset;
 
 mod args;
-mod bigram_language_model;
+mod simple_bigram_language_model;
 mod char_set_transcoder;
 mod dataset;
 
@@ -98,17 +98,17 @@ fn main() {
         }
     }
 
-    let mut model = BigramLanguageModel::new(
+    let mut simple_bigram_model = SimpleBigramLanguageModel::new(
         char_set_transcoder.char_set.len(),
         char_set_transcoder.char_set.len(),
         device,
     );
-    match model.train(dataset, args.num_epochs, 32) {
+    match simple_bigram_model.train(dataset, args.num_epochs, 32) {
         Ok(_) => println!("Finished training the model"),
         Err(error) => eprintln!("Error training the model: {}", error)
     }
 
-    match model.generate(500, device) {
+    match simple_bigram_model.generate(500, device) {
         Ok(generated_ids) => {
             let decoded = char_set_transcoder.decode(generated_ids);
             println!("Bigram model generated: {}", decoded);

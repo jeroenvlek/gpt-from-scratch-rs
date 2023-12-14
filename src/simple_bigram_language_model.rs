@@ -6,14 +6,14 @@ use rand::prelude::ThreadRng;
 
 use crate::dataset::Dataset;
 
-pub struct BigramLanguageModel {
+pub struct SimpleBigramLanguageModel {
     vocab_size: usize,
     token_embedding_table: Embedding,
     var_map: VarMap,
     rng: ThreadRng,
 }
 
-impl BigramLanguageModel {
+impl SimpleBigramLanguageModel {
     pub fn new(vocab_size: usize, hidden_size: usize, device: &Device) -> Self {
         let var_map = VarMap::new();
         let var_builder = VarBuilder::from_varmap(&var_map, DType::F32, device);
@@ -77,7 +77,7 @@ impl BigramLanguageModel {
     }
 }
 
-impl Module for BigramLanguageModel {
+impl Module for SimpleBigramLanguageModel {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
         self.token_embedding_table.forward(xs)
     }
