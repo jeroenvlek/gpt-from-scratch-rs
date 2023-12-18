@@ -123,6 +123,7 @@ fn main() {
 }
 
 fn self_attention_examples(device: &Device) -> candle_core::Result<()> {
+    // toy example illustrating how matrix multiplication can be used for a "weighted aggregation"
     let mut a = Tensor::tril2(3, DType::F32, device)?;
     let sum_a = a.sum_keepdim(1)?;
     a = a.broadcast_div(&sum_a)?;
@@ -133,6 +134,27 @@ fn self_attention_examples(device: &Device) -> candle_core::Result<()> {
 
     let c = a.matmul(&b)?;
     println!("C: {:?}", c.to_vec2::<f32>());
+
+    // consider the following toy example:
+    let dims = (4, 8, 2); // batch, time, channels
+    let x = Tensor::rand(0f32, 10f32, Shape::from(dims), device)?;
+    println!("x.shape: {:?}", x.shape());
+
+    // We want x[b,t] = mean_{i<=t} x[b,i]
+    let mut means: Vec<Tensor> = Vec::with_capacity(dims.0 * dims.1 * dims.2);
+    for b_idx in 0..dims.0 {
+        for t_idx in 0..dims.1 {
+            let x_prev = x.i((b_idx, 0..t_idx +1, ..))?;
+            let mean = x_prev.mean_keepdim(0)?;
+            means.push(mean);
+        }
+    }
+    let x_bag_of_words = Tensor::stack( means.as_slice() , 2)?.reshape(Shape::from(dims))?;
+    println!("xbow: {:?}", x_bag_of_words.to_vec3::<f32>());
+    println!("xbow shape: {:?}", x_bag_of_words.shape());
+
+
+    // version 2: using matrix multiply for a weighted aggregation
 
     Ok(())
 }
