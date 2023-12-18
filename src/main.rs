@@ -1,8 +1,9 @@
 use std::fs::File;
 use std::io;
 use std::io::Read;
+use std::ops::Div;
 
-use candle_core::{Device, IndexOp, Shape, Tensor};
+use candle_core::{Device, DType, IndexOp, Shape, Tensor};
 use clap::Parser;
 
 use args::Args;
@@ -16,7 +17,7 @@ mod simple_bigram_language_model;
 mod char_set_transcoder;
 mod dataset;
 
-fn load_file(path: String) -> Result<String, io::Error> {
+fn load_file(path: String) -> std::result::Result<String, io::Error> {
     let mut file = File::open(path)?; // ? operator used for error propagation
 
     let mut contents = String::new();
@@ -84,35 +85,49 @@ fn main() {
     }
 
     let batch_size = 4usize;
-    let (stacked_contexts, stacked_targets) = dataset.random_training_batch(block_size, batch_size).unwrap();
-    println!("inputs:");
-    println!("Contexts (xb) shape: {:?}", stacked_contexts.shape());
-    println!("targets:");
-    println!("Contexts (yb) shape: {:?}", stacked_targets.shape());
+    // let (stacked_contexts, stacked_targets) = dataset.random_training_batch(block_size, batch_size).unwrap();
+    // println!("inputs:");
+    // println!("Contexts (xb) shape: {:?}", stacked_contexts.shape());
+    // println!("targets:");
+    // println!("Contexts (yb) shape: {:?}", stacked_targets.shape());
+    //
+    // for b in 0..batch_size {
+    //     for t in 0..block_size {
+    //         let context = stacked_contexts.i(b).unwrap().i(0..t + 1).unwrap();
+    //         let target = stacked_targets.i(b).unwrap().i(t).unwrap();
+    //         println!("when input is {:?} the target: {:?}", context, target);
+    //     }
+    // }
+    //
+    // let mut simple_bigram_model = SimpleBigramLanguageModel::new(
+    //     char_set_transcoder.char_set.len(),
+    //     char_set_transcoder.char_set.len(),
+    //     device,
+    // );
+    // match simple_bigram_model.train(dataset, args.num_epochs, 32) {
+    //     Ok(_) => println!("Finished training the model"),
+    //     Err(error) => eprintln!("Error training the model: {}", error)
+    // }
+    //
+    // match simple_bigram_model.generate(500, device) {
+    //     Ok(generated_ids) => {
+    //         let decoded = char_set_transcoder.decode(generated_ids);
+    //         println!("Bigram model generated: {}", decoded);
+    //     }
+    //     Err(error) => eprintln!("Error generating characters with bigram model: {}", error)
+    // }
 
-    for b in 0..batch_size {
-        for t in 0..block_size {
-            let context = stacked_contexts.i(b).unwrap().i(0..t + 1).unwrap();
-            let target = stacked_targets.i(b).unwrap().i(t).unwrap();
-            println!("when input is {:?} the target: {:?}", context, target);
-        }
-    }
+    // The mathematical trick in self-attention
+    self_attention_examples(device).expect("Self attention example failed!");
+    
+}
 
-    let mut simple_bigram_model = SimpleBigramLanguageModel::new(
-        char_set_transcoder.char_set.len(),
-        char_set_transcoder.char_set.len(),
-        device,
-    );
-    match simple_bigram_model.train(dataset, args.num_epochs, 32) {
-        Ok(_) => println!("Finished training the model"),
-        Err(error) => eprintln!("Error training the model: {}", error)
-    }
-
-    match simple_bigram_model.generate(500, device) {
-        Ok(generated_ids) => {
-            let decoded = char_set_transcoder.decode(generated_ids);
-            println!("Bigram model generated: {}", decoded);
-        }
-        Err(error) => eprintln!("Error generating characters with bigram model: {}", error)
-    }
+fn self_attention_examples(device: &Device) -> candle_core::Result<()> {
+    let mut a = Tensor::tril2(3, DType::F32, device)?;
+    let sum_a = a.sum_keepdim(1)?;
+    a = a.broadcast_div(&sum_a)?;
+    println!("A: {:?}", a.to_vec2::<f32>());
+    let rng = rand::thread_rng();
+    
+    Ok(())
 }
