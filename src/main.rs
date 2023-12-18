@@ -127,7 +127,12 @@ fn self_attention_examples(device: &Device) -> candle_core::Result<()> {
     let sum_a = a.sum_keepdim(1)?;
     a = a.broadcast_div(&sum_a)?;
     println!("A: {:?}", a.to_vec2::<f32>());
-    let rng = rand::thread_rng();
-    
+
+    let b = Tensor::rand(0.0f32, 10.0f32, Shape::from((3, 2)), device)?;
+    println!("B: {:?}", b.to_vec2::<f32>());
+
+    let c = a.matmul(&b)?;
+    println!("C: {:?}", c.to_vec2::<f32>());
+
     Ok(())
 }
