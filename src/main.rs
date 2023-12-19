@@ -4,6 +4,7 @@ use std::io::Read;
 use std::ops::Div;
 
 use candle_core::{Device, DType, IndexOp, Shape, Tensor};
+use candle_nn::ops;
 use clap::Parser;
 
 use args::Args;
@@ -149,12 +150,33 @@ fn self_attention_examples(device: &Device) -> candle_core::Result<()> {
             means.push(mean);
         }
     }
-    let x_bag_of_words = Tensor::stack( means.as_slice() , 2)?.reshape(Shape::from(dims))?;
+    let x_bag_of_words = Tensor::stack( means.as_slice() , 1)?.reshape(Shape::from(dims))?;
     println!("xbow: {:?}", x_bag_of_words.to_vec3::<f32>());
     println!("xbow shape: {:?}", x_bag_of_words.shape());
 
 
     // version 2: using matrix multiply for a weighted aggregation
+    let mut wei = Tensor::tril2(dims.1, DType::F32, device)?;
+    let sum_wei = wei.sum_keepdim(1)?;
+    wei = wei.broadcast_div(&sum_wei)?;
+    let x_bag_of_words2 = wei.broadcast_matmul(&x)?;
+    println!("xbow2: {:?}", x_bag_of_words2.to_vec3::<f32>());
+    println!("xbow2 shape: {:?}", x_bag_of_words2.shape());
+    println!("allclose: {}", all_close(&x_bag_of_words, &x_bag_of_words2)? );
+
+    // version 3: use Softmax
+    wei = Tensor::tril2(dims.1, DType::F32, device)?;
+
+    // triu2? upper triangle?
+    // ops::softmax()
+
+    // wei.apply()
 
     Ok(())
+}
+
+fn all_close(lhs: &Tensor, rhs: &Tensor) -> candle_core::Result<bool> {
+    // JV: interesting to see different precisions between the different xbows, rounding fixes it
+    let element_compare = lhs.round_to(5)?.eq(&rhs.round_to(5)?)?.sum_all()?;
+    Ok(element_compare.to_vec0::<u8>()? == lhs.shape().elem_count() as u8)
 }
