@@ -1,6 +1,6 @@
-use candle_core::{Device, DType, Error, IndexOp, Result, Shape, Tensor};
-use candle_nn::{Module, ops};
-use candle_nn::{AdamW, Embedding, loss, Optimizer, ParamsAdamW, VarBuilder, VarMap};
+use candle_core::{DType, Device, Error, IndexOp, Result, Shape, Tensor};
+use candle_nn::{loss, AdamW, Embedding, Optimizer, ParamsAdamW, VarBuilder, VarMap};
+use candle_nn::{ops, Module};
 use rand::distributions::Distribution;
 use rand::prelude::ThreadRng;
 
@@ -42,7 +42,7 @@ impl SimpleBigramLanguageModel {
             let (batch_size, time_size, channel_size) = logits.shape().dims3()?;
             let loss = loss::cross_entropy(
                 &logits.reshape(Shape::from((batch_size * time_size, channel_size)))?,
-                &training_targets.reshape(Shape::from((batch_size * time_size, )))?,
+                &training_targets.reshape(Shape::from((batch_size * time_size,)))?,
             )?;
             optimizer.backward_step(&loss)?;
 
@@ -65,7 +65,11 @@ impl SimpleBigramLanguageModel {
         let mut generated_ids: Vec<u32> = Vec::with_capacity(max_new_tokens);
         generated_ids.push(0); // Karpathy uses idx = torch.zeros((1, 1)
         for i in 1..max_new_tokens {
-            let logits = self.forward(&Tensor::from_vec(generated_ids.clone(), Shape::from(i), device)?)?;
+            let logits = self.forward(&Tensor::from_vec(
+                generated_ids.clone(),
+                Shape::from(i),
+                device,
+            )?)?;
             let most_recent_logits = logits.i((i - 1, ..))?;
             let probabilities = ops::softmax(&most_recent_logits, 0)?;
             let vec = probabilities.to_vec1()?;

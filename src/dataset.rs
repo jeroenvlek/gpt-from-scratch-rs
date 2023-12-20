@@ -1,6 +1,6 @@
 use candle_core::{IndexOp, Result, Tensor};
-use rand::Rng;
 use rand::rngs::ThreadRng;
+use rand::Rng;
 
 #[derive(Debug)]
 pub struct Dataset {
@@ -39,15 +39,18 @@ impl Dataset {
             .map(|_| self.rng.gen_range(0..self.training_size - block_size))
             .collect();
 
-        let context_rows = max_block_indices.iter()
-            .map(|&max_index| self.training_data.i(max_index..max_index + block_size).unwrap()
-            );
+        let context_rows = max_block_indices.iter().map(|&max_index| {
+            self.training_data
+                .i(max_index..max_index + block_size)
+                .unwrap()
+        });
         let stacked_contexts = Tensor::stack(&context_rows.collect::<Vec<_>>(), 0)?;
 
-        let target_rows = max_block_indices.iter().map(|&max_index|
+        let target_rows = max_block_indices.iter().map(|&max_index| {
             self.training_data
-                .i(max_index + 1..max_index + block_size + 1).unwrap()
-        );
+                .i(max_index + 1..max_index + block_size + 1)
+                .unwrap()
+        });
         let stacked_targets = Tensor::stack(&target_rows.collect::<Vec<_>>(), 0)?;
 
         Ok((stacked_contexts, stacked_targets))

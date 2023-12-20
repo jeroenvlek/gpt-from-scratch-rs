@@ -7,5 +7,5 @@ pub struct Args {
     pub input_path: String,
 
     #[arg(short, long, default_value_t = 100)]
-    pub num_epochs: usize
+    pub num_epochs: usize,
 }

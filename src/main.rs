@@ -3,20 +3,19 @@ use std::io;
 use std::io::Read;
 use std::ops::Div;
 
-use candle_core::{Device, DType, IndexOp, Shape, Tensor};
+use candle_core::{DType, Device, IndexOp, Shape, Tensor};
 use candle_nn::ops;
 use clap::Parser;
 
 use args::Args;
 
-use crate::simple_bigram_language_model::SimpleBigramLanguageModel;
 use crate::char_set_transcoder::CharSetTranscoder;
 use crate::dataset::Dataset;
 
 mod args;
-mod simple_bigram_language_model;
 mod char_set_transcoder;
 mod dataset;
+mod simple_bigram_language_model;
 
 fn load_file(path: String) -> std::result::Result<String, io::Error> {
     let mut file = File::open(path)?; // ? operator used for error propagation
@@ -120,7 +119,6 @@ fn main() {
 
     // The mathematical trick in self-attention
     self_attention_examples(device).expect("Self attention example failed!");
-    
 }
 
 fn self_attention_examples(device: &Device) -> candle_core::Result<()> {
@@ -145,15 +143,14 @@ fn self_attention_examples(device: &Device) -> candle_core::Result<()> {
     let mut means: Vec<Tensor> = Vec::with_capacity(dims.0 * dims.1 * dims.2);
     for b_idx in 0..dims.0 {
         for t_idx in 0..dims.1 {
-            let x_prev = x.i((b_idx, 0..t_idx +1, ..))?;
+            let x_prev = x.i((b_idx, 0..t_idx + 1, ..))?;
             let mean = x_prev.mean_keepdim(0)?;
             means.push(mean);
         }
     }
-    let x_bag_of_words = Tensor::stack( means.as_slice() , 1)?.reshape(Shape::from(dims))?;
+    let x_bag_of_words = Tensor::stack(means.as_slice(), 1)?.reshape(Shape::from(dims))?;
     println!("xbow: {:?}", x_bag_of_words.to_vec3::<f32>());
     println!("xbow shape: {:?}", x_bag_of_words.shape());
-
 
     // version 2: using matrix multiply for a weighted aggregation
     let mut wei = Tensor::tril2(dims.1, DType::F32, device)?;
@@ -162,21 +159,35 @@ fn self_attention_examples(device: &Device) -> candle_core::Result<()> {
     let x_bag_of_words2 = wei.broadcast_matmul(&x)?;
     println!("xbow2: {:?}", x_bag_of_words2.to_vec3::<f32>());
     println!("xbow2 shape: {:?}", x_bag_of_words2.shape());
-    println!("allclose: {}", all_close(&x_bag_of_words, &x_bag_of_words2)? );
+    println!(
+        "allclose: {}",
+        all_close(&x_bag_of_words, &x_bag_of_words2)?
+    );
 
     // version 3: use Softmax
-    wei = Tensor::tril2(dims.1, DType::F32, device)?;
-
-    // triu2? upper triangle?
-    // ops::softmax()
-
-    // wei.apply()
+    let neg_inf = Tensor::from_vec(
+        vec![f32::NEG_INFINITY; dims.1 * dims.1],
+        Shape::from((dims.1, dims.1)),
+        device,
+    )?;
+    wei = Tensor::tril2(dims.1, DType::U32, device)?
+        .where_cond(&Tensor::tril2(dims.1, DType::F32, device)?, &neg_inf)?;
+    println!("wei: {:?}", wei.to_vec2::<f32>());
+    wei = ops::softmax(&wei, 1)?;
+    println!("wei: {:?}", wei.to_vec2::<f32>());
+    let x_bag_of_words3 = wei.broadcast_matmul(&x)?;
+    println!("xbow3: {:?}", x_bag_of_words3.to_vec3::<f32>());
+    println!("xbow3 shape: {:?}", x_bag_of_words3.shape());
+    println!(
+        "allclose: {}",
+        all_close(&x_bag_of_words, &x_bag_of_words3)?
+    );
 
     Ok(())
 }
 
 fn all_close(lhs: &Tensor, rhs: &Tensor) -> candle_core::Result<bool> {
     // JV: interesting to see different precisions between the different xbows, rounding fixes it
-    let element_compare = lhs.round_to(5)?.eq(&rhs.round_to(5)?)?.sum_all()?;
+    let element_compare = lhs.round_to(4)?.eq(&rhs.round_to(4)?)?.sum_all()?;
     Ok(element_compare.to_vec0::<u8>()? == lhs.shape().elem_count() as u8)
 }
