@@ -3,8 +3,8 @@ use std::io;
 use std::io::Read;
 use std::ops::Div;
 
-use candle_core::{DType, Device, IndexOp, Shape, Tensor};
-use candle_nn::ops;
+use candle_core::{DType, Device, IndexOp, Module, Shape, Tensor, D};
+use candle_nn::{linear_no_bias, ops, Linear, VarBuilder, VarMap};
 use clap::Parser;
 
 use args::Args;
@@ -165,7 +165,7 @@ fn self_attention_examples(device: &Device) -> candle_core::Result<()> {
     );
 
     // version 3: use Softmax
-    let neg_inf = Tensor::from_vec(
+    let mut neg_inf = Tensor::from_vec(
         vec![f32::NEG_INFINITY; dims.1 * dims.1],
         Shape::from((dims.1, dims.1)),
         device,
@@ -183,11 +183,68 @@ fn self_attention_examples(device: &Device) -> candle_core::Result<()> {
         all_close(&x_bag_of_words, &x_bag_of_words3)?
     );
 
+    // version 4: self-attention!
+    let (B, T, C) = (4usize, 8usize, 32usize); // batch, time, channels
+    let x2 = Tensor::randn(0f32, 1f32, Shape::from((B, T, C)), device)?;
+
+    // let's see a single Head perform self-attention
+    const HEAD_SIZE: usize = 16;
+    let var_map = VarMap::new();
+    let key = linear_no_bias(
+        C,
+        HEAD_SIZE,
+        VarBuilder::from_varmap(&var_map, DType::F32, device),
+    )?;
+    let query = linear_no_bias(
+        C,
+        HEAD_SIZE,
+        VarBuilder::from_varmap(&var_map, DType::F32, device),
+    )?;
+    let value = linear_no_bias(
+        C,
+        HEAD_SIZE,
+        VarBuilder::from_varmap(&var_map, DType::F32, device),
+    )?;
+    let k = key.forward(&x2)?;
+    let q = query.forward(&x2)?;
+    wei = q.matmul(&k.transpose(D::Minus2, D::Minus1)?)?; // (B, T, 16) @ (B, 16, T) ---> (B, T, T)
+    println!("wei.shape: {:?}", wei.shape());
+
+    neg_inf = Tensor::from_vec(
+        vec![f32::NEG_INFINITY; B * T * T],
+        Shape::from((B, T, T)),
+        device,
+    )?;
+
+    let masked_fill = Tensor::stack(
+        &((0..B)
+            .map(|b| -> Tensor {
+                Tensor::tril2(T, DType::U32, device)
+                    .unwrap()
+                    .where_cond(
+                        &wei.i((b, .., ..)).unwrap(),
+                        &neg_inf.i((b, .., ..)).unwrap(),
+                    )
+                    .unwrap()
+            })
+            .collect::<Vec<Tensor>>()),
+        0,
+    )?;
+    println!("masked_fill.shape: {:?}", masked_fill.shape());
+    println!("masked_fill: {:?}", masked_fill.to_vec3::<f32>());
+    wei = ops::softmax(&masked_fill, D::Minus1)?;
+
+    let v = value.forward(&x2) ?;
+    let out = wei.matmul(&v)?;
+    println!("out.shape: {:?}", out.shape());
+
+    println!("wei[0]: {:?}", wei.i(0)?.to_vec2::<f32>());
+
     Ok(())
 }
 
 fn all_close(lhs: &Tensor, rhs: &Tensor) -> candle_core::Result<bool> {
-    // JV: interesting to see different precisions between the different xbows, rounding fixes it
+    // JV: interesting to see different precisions between the different xbows, rounding fixes it, but should investigate further
     let element_compare = lhs.round_to(4)?.eq(&rhs.round_to(4)?)?.sum_all()?;
     Ok(element_compare.to_vec0::<u8>()? == lhs.shape().elem_count() as u8)
 }
