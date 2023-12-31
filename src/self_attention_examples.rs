@@ -177,6 +177,7 @@ fn scaled_attention_example(device: &Device) -> candle_core::Result<()> {
 
 fn all_close(lhs: &Tensor, rhs: &Tensor) -> candle_core::Result<bool> {
     // JV: interesting to see different precisions between the different xbows, rounding fixes it, but should investigate further
+    // seems like Candle does f64 by default given the * operator being overloaded only for f64
     let element_compare = lhs.round_to(4)?.eq(&rhs.round_to(4)?)?.sum_all()?;
     Ok(element_compare.to_vec0::<u8>()? == lhs.shape().elem_count() as u8)
 }
