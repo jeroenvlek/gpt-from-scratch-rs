@@ -1,6 +1,8 @@
 use candle_core::{DType, Device, IndexOp, Module, Shape, Tensor, D};
 use candle_nn::{linear_no_bias, ops, VarBuilder, VarMap};
 
+const HEAD_SIZE: usize = 16;
+
 pub fn self_attention_examples(device: &Device) -> candle_core::Result<()> {
     toy_example_weighted_aggregation(device)?;
 
@@ -24,6 +26,8 @@ pub fn self_attention_examples(device: &Device) -> candle_core::Result<()> {
     );
 
     example_4_self_attention(device)?;
+
+    scaled_attention_example(device)?;
 
     Ok(())
 }
@@ -65,10 +69,10 @@ fn example_1_bag_of_words(x: &Tensor) -> candle_core::Result<Tensor> {
 fn example_2_bow_mat_mul(x: &Tensor) -> candle_core::Result<Tensor> {
     // version 2: using matrix multiply for a weighted aggregation
     let dims = x.shape().dims();
-    let mut wei = Tensor::tril2(dims[1], DType::F32, x.device())?;
-    let sum_wei = wei.sum_keepdim(1)?;
-    wei = wei.broadcast_div(&sum_wei)?;
-    let x_bag_of_words2 = wei.broadcast_matmul(&x)?;
+    let mut weights = Tensor::tril2(dims[1], DType::F32, x.device())?;
+    let sum_weights = weights.sum_keepdim(1)?;
+    weights = weights.broadcast_div(&sum_weights)?;
+    let x_bag_of_words2 = weights.broadcast_matmul(&x)?;
     println!("xbow2: {:?}", x_bag_of_words2.to_vec3::<f32>());
     println!("xbow2 shape: {:?}", x_bag_of_words2.shape());
 
@@ -82,12 +86,12 @@ fn example_3_softmax(x: &Tensor) -> candle_core::Result<Tensor> {
         Shape::from((T, T)),
         x.device(),
     )?;
-    let mut wei = Tensor::tril2(T, DType::U32, x.device())?
+    let mut weights = Tensor::tril2(T, DType::U32, x.device())?
         .where_cond(&Tensor::tril2(T, DType::F32, x.device())?, &neg_inf)?;
-    println!("wei: {:?}", wei.to_vec2::<f32>());
-    wei = ops::softmax(&wei, 1)?;
-    println!("wei: {:?}", wei.to_vec2::<f32>());
-    let x_bag_of_words3 = wei.broadcast_matmul(&x)?;
+    println!("wei: {:?}", weights.to_vec2::<f32>());
+    weights = ops::softmax(&weights, 1)?;
+    println!("wei: {:?}", weights.to_vec2::<f32>());
+    let x_bag_of_words3 = weights.broadcast_matmul(&x)?;
     println!("xbow3: {:?}", x_bag_of_words3.to_vec3::<f32>());
     println!("xbow3 shape: {:?}", x_bag_of_words3.shape());
 
@@ -97,10 +101,9 @@ fn example_3_softmax(x: &Tensor) -> candle_core::Result<Tensor> {
 fn example_4_self_attention(device: &Device) -> candle_core::Result<Tensor> {
     // version 4: self-attention!
     let (B, T, C) = (4usize, 8usize, 32usize); // batch, time, channels
-    let x2 = Tensor::randn(0f32, 1f32, Shape::from((B, T, C)), device)?;
+    let x = Tensor::randn(0f32, 1f32, Shape::from((B, T, C)), device)?;
 
     // let's see a single Head perform self-attention
-    const HEAD_SIZE: usize = 16;
     let var_map = VarMap::new();
     let key = linear_no_bias(
         C,
@@ -117,10 +120,10 @@ fn example_4_self_attention(device: &Device) -> candle_core::Result<Tensor> {
         HEAD_SIZE,
         VarBuilder::from_varmap(&var_map, DType::F32, device),
     )?;
-    let k = key.forward(&x2)?;
-    let q = query.forward(&x2)?;
-    let mut wei = q.matmul(&k.transpose(D::Minus2, D::Minus1)?)?; // (B, T, 16) @ (B, 16, T) ---> (B, T, T)
-    println!("wei.shape: {:?}", wei.shape());
+    let k = key.forward(&x)?;
+    let q = query.forward(&x)?;
+    let mut weights = q.matmul(&k.transpose(D::Minus2, D::Minus1)?)?; // (B, T, 16) @ (B, 16, T) ---> (B, T, T)
+    println!("wei.shape: {:?}", weights.shape());
 
     let neg_inf = Tensor::from_vec(
         vec![f32::NEG_INFINITY; B * T * T],
@@ -134,7 +137,7 @@ fn example_4_self_attention(device: &Device) -> candle_core::Result<Tensor> {
                 Tensor::tril2(T, DType::U32, device)
                     .unwrap()
                     .where_cond(
-                        &wei.i((b, .., ..)).unwrap(),
+                        &weights.i((b, .., ..)).unwrap(),
                         &neg_inf.i((b, .., ..)).unwrap(),
                     )
                     .unwrap()
@@ -144,15 +147,28 @@ fn example_4_self_attention(device: &Device) -> candle_core::Result<Tensor> {
     )?;
     println!("masked_fill.shape: {:?}", masked_fill.shape());
     println!("masked_fill: {:?}", masked_fill.to_vec3::<f32>());
-    wei = ops::softmax(&masked_fill, D::Minus1)?;
+    weights = ops::softmax(&masked_fill, D::Minus1)?;
 
-    let v = value.forward(&x2)?;
-    let out = wei.matmul(&v)?;
+    let v = value.forward(&x)?;
+    let out = weights.matmul(&v)?;
     println!("out.shape: {:?}", out.shape());
 
-    println!("wei[0]: {:?}", wei.i(0)?.to_vec2::<f32>());
+    println!("wei[0]: {:?}", weights.i(0)?.to_vec2::<f32>());
 
     Ok(out)
+}
+
+fn scaled_attention_example(device: &Device) -> candle_core::Result<()> {
+    let (B, T) = (4usize, 8usize); // batch, time
+    let k = Tensor::randn(0f32, 1f32, Shape::from((B, T, HEAD_SIZE)), device)?;
+    let q = Tensor::randn(0f32, 1f32, Shape::from((B, T, HEAD_SIZE)), device)?;
+    let weights = (q.matmul(&k.transpose(D::Minus2, D::Minus1)?)? * (HEAD_SIZE as f64).powf(-0.5))?;
+
+    println!("k.var(): {}", k.flatten_all()?.var(0)?);
+    println!("q.var(): {}", q.flatten_all()?.var(0)?);
+    println!("wei.var(): {}", weights.flatten_all()?.var(0)?);
+
+    Ok(())
 }
 
 fn all_close(lhs: &Tensor, rhs: &Tensor) -> candle_core::Result<bool> {

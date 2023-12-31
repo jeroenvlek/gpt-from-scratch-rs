@@ -13,7 +13,9 @@ pub struct SimpleBigramLanguageModel {
     rng: ThreadRng,
 }
 
+/// Even though Karpathy calls the final bigram model simple, this is the intermediate version in the notebook.
 impl SimpleBigramLanguageModel {
+
     pub fn new(vocab_size: usize, hidden_size: usize, device: &Device) -> Self {
         let var_map = VarMap::new();
         let var_builder = VarBuilder::from_varmap(&var_map, DType::F32, device);
