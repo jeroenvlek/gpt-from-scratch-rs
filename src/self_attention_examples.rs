@@ -168,6 +168,10 @@ fn scaled_attention_example(device: &Device) -> candle_core::Result<()> {
     println!("q.var(): {}", q.flatten_all()?.var(0)?);
     println!("wei.var(): {}", weights.flatten_all()?.var(0)?);
 
+    let tensor = Tensor::from_vec(vec![0.1, -0.2, 0.3, -0.2, 0.5], Shape::from(5), device)?;
+    println!("softmax(tensor([0.1, -0.2, 0.3, -0.2, 0.5])): {}", ops::softmax(&tensor, D::Minus1)?);
+    println!("softmax(tensor([0.1, -0.2, 0.3, -0.2, 0.5]) * 8): {}", ops::softmax(&(tensor * 8f64)?, D::Minus1)?);
+
     Ok(())
 }
 
