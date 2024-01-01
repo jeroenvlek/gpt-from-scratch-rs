@@ -1,10 +1,61 @@
-use candle_core::{DType, Device, Error, IndexOp, Result, Shape, Tensor};
-use candle_nn::{loss, AdamW, Embedding, Optimizer, ParamsAdamW, VarBuilder, VarMap};
+use candle_core::{DType, Device, Error, IndexOp, Result, Shape, Tensor, D};
+use candle_nn::{loss, AdamW, Embedding, Optimizer, ParamsAdamW, VarBuilder, VarMap, Linear, Dropout, linear_no_bias};
 use candle_nn::{ops, Module};
 use rand::distributions::Distribution;
 use rand::prelude::ThreadRng;
 
 use crate::dataset::Dataset;
+
+
+pub struct Head {
+    /// one head of self-attention
+    key: Linear,
+    query: Linear,
+    value: Linear,
+    tril: Tensor,
+    negative_infinity: Tensor,
+    dropout_rate: f32
+}
+
+impl Head {
+    pub fn new(num_embeddings: usize, head_size: usize, block_size: usize, dropout_rate: f32, var_map: &VarMap, device: &Device) -> Result<Self> {
+        let key = linear_no_bias(num_embeddings, head_size, VarBuilder::from_varmap(var_map, DType::F32, device))?;
+        let query = linear_no_bias(num_embeddings, head_size, VarBuilder::from_varmap(var_map, DType::F32, device))?;
+        let value = linear_no_bias(num_embeddings, head_size, VarBuilder::from_varmap(var_map, DType::F32, device))?;
+        let tril = Tensor::tril2(block_size, DType::F32, device)?;
+        let negative_infinity = Tensor::try_from(f32::NEG_INFINITY)?;
+
+        Ok(Self {
+            key,
+            query,
+            value,
+            tril,
+            negative_infinity,
+            dropout_rate
+        })
+    }
+}
+
+impl Module for Head {
+    fn forward(&self, xs: &Tensor) -> Result<Tensor> {
+        let k = self.key.forward(xs)?;
+        let q = self.query.forward(xs)?;
+
+        // compute attention scores ("affinities")
+        let c = xs.shape().dims()[2]; // JV: batch, time, channel
+        let mut weights = (q.matmul(&k.transpose(D::Minus2, D::Minus1)?)? * (c as f64).powf(-0.5))?; // (B, T, C) @ (B, C, T) -> (B, T, T)
+        let masked_fill = self.tril.broadcast_as(Shape::from(weights.shape()))?.where_cond(&weights, &self.negative_infinity.broadcast_as(weights.shape())?)?; // (B, T, T)
+        weights = ops::softmax(&masked_fill, D::Minus1)?; // (B, T, T)
+        weights = ops::dropout(&weights, self.dropout_rate)?;
+        // perform the weighted aggregation of the values
+        let v = self.value.forward(&xs)?; // (B,T,C)
+        let out = weights.matmul(&v)?; // (B, T, T) @ (B, T, C) -> (B, T, C)
+
+        Ok(out)
+    }
+
+}
+
 
 pub struct BigramLanguageModel {
     vocab_size: usize,
