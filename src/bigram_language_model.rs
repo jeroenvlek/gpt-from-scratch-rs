@@ -1,9 +1,10 @@
-use candle_core::{D, Device, DType, Error, IndexOp, Result, Shape, Tensor};
+use candle_core::{DType, Device, Error, IndexOp, Result, Shape, Tensor, D};
+use candle_nn::ops::dropout;
 use candle_nn::{
-    AdamW, Embedding, linear, Linear, linear_no_bias, loss, Optimizer, ParamsAdamW,
-    VarBuilder, VarMap,
+    linear, linear_no_bias, loss, sequential, Activation, AdamW, Dropout, Embedding, Linear,
+    Optimizer, ParamsAdamW, Sequential, VarBuilder, VarMap,
 };
-use candle_nn::{Module, ops};
+use candle_nn::{ops, Module};
 use rand::distributions::Distribution;
 use rand::prelude::ThreadRng;
 
@@ -84,6 +85,7 @@ impl Module for Head {
 }
 
 pub struct MultiHeadAttention {
+    /// multiple heads of self-attention in parallel
     heads: Vec<Box<Head>>,
     proj: Linear,
     dropout_rate: f32,
@@ -116,7 +118,6 @@ impl MultiHeadAttention {
             VarBuilder::from_varmap(var_map, DType::F32, device),
         )?;
 
-
         Ok(Self {
             heads,
             proj,
@@ -128,7 +129,8 @@ impl MultiHeadAttention {
 impl Module for MultiHeadAttention {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
         let concatenated = Tensor::cat(
-            &self.heads
+            &self
+                .heads
                 .iter()
                 .map(|h| h.forward(xs).expect("Could not apply head. Diggity"))
                 .collect::<Vec<Tensor>>(),
@@ -138,6 +140,37 @@ impl Module for MultiHeadAttention {
         let out = ops::dropout(&projected, self.dropout_rate)?;
 
         Ok(out)
+    }
+}
+
+pub struct FeedForward {
+    net: Sequential,
+}
+
+const FEED_FORWARD_OUT_SCALE: usize = 4;
+
+impl FeedForward {
+    pub fn new(
+        num_embeddings: usize,
+        dropout_rate: f32,
+        var_map: &VarMap,
+        device: &Device,
+    ) -> Result<Self> {
+        let mut net = sequential::seq();
+        net = net.add(linear(
+            num_embeddings,
+            FEED_FORWARD_OUT_SCALE * num_embeddings,
+            VarBuilder::from_varmap(var_map, DType::F32, device),
+        )?);
+        net = net.add(Activation::Relu);
+        net = net.add(linear(
+            FEED_FORWARD_OUT_SCALE * num_embeddings,
+            num_embeddings,
+            VarBuilder::from_varmap(var_map, DType::F32, device),
+        )?);
+        net = net.add(move |xs: &Tensor| dropout(xs, dropout_rate));
+
+        Ok(Self { net })
     }
 }
 

@@ -7,13 +7,13 @@ use rand::prelude::ThreadRng;
 use crate::dataset::Dataset;
 
 pub struct SimpleBigramLanguageModel {
+/// Even though Karpathy calls the final bigram model simple, this is the intermediate version in the notebook.
     vocab_size: usize,
     token_embedding_table: Embedding,
     var_map: VarMap,
     rng: ThreadRng,
 }
 
-/// Even though Karpathy calls the final bigram model simple, this is the intermediate version in the notebook.
 impl SimpleBigramLanguageModel {
 
     pub fn new(vocab_size: usize, hidden_size: usize, device: &Device) -> Self {
