@@ -100,23 +100,23 @@ fn example_3_softmax(x: &Tensor) -> candle_core::Result<Tensor> {
 
 fn example_4_self_attention(device: &Device) -> candle_core::Result<Tensor> {
     // version 4: self-attention!
-    let (B, T, C) = (4usize, 8usize, 32usize); // batch, time, channels
-    let x = Tensor::randn(0f32, 1f32, Shape::from((B, T, C)), device)?;
+    let (b, t, c) = (4usize, 8usize, 32usize); // batch, time, channels
+    let x = Tensor::randn(0f32, 1f32, Shape::from((b, t, c)), device)?;
 
     // let's see a single Head perform self-attention
     let var_map = VarMap::new();
     let key = linear_no_bias(
-        C,
+        c,
         HEAD_SIZE,
         VarBuilder::from_varmap(&var_map, DType::F32, device),
     )?;
     let query = linear_no_bias(
-        C,
+        c,
         HEAD_SIZE,
         VarBuilder::from_varmap(&var_map, DType::F32, device),
     )?;
     let value = linear_no_bias(
-        C,
+        c,
         HEAD_SIZE,
         VarBuilder::from_varmap(&var_map, DType::F32, device),
     )?;
@@ -126,25 +126,12 @@ fn example_4_self_attention(device: &Device) -> candle_core::Result<Tensor> {
     println!("wei.shape: {:?}", weights.shape());
 
     let neg_inf = Tensor::from_vec(
-        vec![f32::NEG_INFINITY; B * T * T],
-        Shape::from((B, T, T)),
+        vec![f32::NEG_INFINITY; b * t * t],
+        Shape::from((b, t, t)),
         device,
     )?;
 
-    let masked_fill = Tensor::stack(
-        &((0..B)
-            .map(|b| -> Tensor {
-                Tensor::tril2(T, DType::U32, device)
-                    .unwrap()
-                    .where_cond(
-                        &weights.i((b, .., ..)).unwrap(),
-                        &neg_inf.i((b, .., ..)).unwrap(),
-                    )
-                    .unwrap()
-            })
-            .collect::<Vec<Tensor>>()),
-        0,
-    )?;
+    let masked_fill = Tensor::tril2(t, DType::U32, device)?.broadcast_as(weights.shape())?.where_cond(&weights, &neg_inf)?;
     println!("masked_fill.shape: {:?}", masked_fill.shape());
     println!("masked_fill: {:?}", masked_fill.to_vec3::<f32>());
     weights = ops::softmax(&masked_fill, D::Minus1)?;
