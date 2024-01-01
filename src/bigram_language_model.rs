@@ -1,12 +1,15 @@
-use candle_core::{DType, Device, Error, IndexOp, Result, Shape, Tensor, D};
-use candle_nn::{loss, AdamW, Embedding, Optimizer, ParamsAdamW, VarBuilder, VarMap, Linear, Dropout, linear_no_bias};
-use candle_nn::{ops, Module};
+use candle_core::{D, Device, DType, Error, IndexOp, Result, Shape, Tensor};
+use candle_nn::{
+    AdamW, Embedding, linear, Linear, linear_no_bias, loss, Optimizer, ParamsAdamW,
+    VarBuilder, VarMap,
+};
+use candle_nn::{Module, ops};
 use rand::distributions::Distribution;
 use rand::prelude::ThreadRng;
 
 use crate::dataset::Dataset;
 
-
+#[derive(Clone)]
 pub struct Head {
     /// one head of self-attention
     key: Linear,
@@ -14,14 +17,33 @@ pub struct Head {
     value: Linear,
     tril: Tensor,
     negative_infinity: Tensor,
-    dropout_rate: f32
+    dropout_rate: f32,
 }
 
 impl Head {
-    pub fn new(num_embeddings: usize, head_size: usize, block_size: usize, dropout_rate: f32, var_map: &VarMap, device: &Device) -> Result<Self> {
-        let key = linear_no_bias(num_embeddings, head_size, VarBuilder::from_varmap(var_map, DType::F32, device))?;
-        let query = linear_no_bias(num_embeddings, head_size, VarBuilder::from_varmap(var_map, DType::F32, device))?;
-        let value = linear_no_bias(num_embeddings, head_size, VarBuilder::from_varmap(var_map, DType::F32, device))?;
+    pub fn new(
+        num_embeddings: usize,
+        head_size: usize,
+        block_size: usize,
+        dropout_rate: f32,
+        var_map: &VarMap,
+        device: &Device,
+    ) -> Result<Self> {
+        let key = linear_no_bias(
+            num_embeddings,
+            head_size,
+            VarBuilder::from_varmap(var_map, DType::F32, device),
+        )?;
+        let query = linear_no_bias(
+            num_embeddings,
+            head_size,
+            VarBuilder::from_varmap(var_map, DType::F32, device),
+        )?;
+        let value = linear_no_bias(
+            num_embeddings,
+            head_size,
+            VarBuilder::from_varmap(var_map, DType::F32, device),
+        )?;
         let tril = Tensor::tril2(block_size, DType::F32, device)?;
         let negative_infinity = Tensor::try_from(f32::NEG_INFINITY)?;
 
@@ -31,7 +53,7 @@ impl Head {
             value,
             tril,
             negative_infinity,
-            dropout_rate
+            dropout_rate,
         })
     }
 }
@@ -44,7 +66,13 @@ impl Module for Head {
         // compute attention scores ("affinities")
         let c = xs.shape().dims()[2]; // JV: batch, time, channel
         let mut weights = (q.matmul(&k.transpose(D::Minus2, D::Minus1)?)? * (c as f64).powf(-0.5))?; // (B, T, C) @ (B, C, T) -> (B, T, T)
-        let masked_fill = self.tril.broadcast_as(Shape::from(weights.shape()))?.where_cond(&weights, &self.negative_infinity.broadcast_as(weights.shape())?)?; // (B, T, T)
+        let masked_fill = self
+            .tril
+            .broadcast_as(Shape::from(weights.shape()))?
+            .where_cond(
+                &weights,
+                &self.negative_infinity.broadcast_as(weights.shape())?,
+            )?; // (B, T, T)
         weights = ops::softmax(&masked_fill, D::Minus1)?; // (B, T, T)
         weights = ops::dropout(&weights, self.dropout_rate)?;
         // perform the weighted aggregation of the values
@@ -53,9 +81,64 @@ impl Module for Head {
 
         Ok(out)
     }
-
 }
 
+pub struct MultiHeadAttention {
+    heads: Vec<Head>,
+    proj: Linear,
+    dropout_rate: f32,
+}
+
+impl MultiHeadAttention {
+    pub fn new(
+        num_embeddings: usize,
+        num_heads: usize,
+        head_size: usize,
+        block_size: usize,
+        dropout_rate: f32,
+        var_map: &VarMap,
+        device: &Device,
+    ) -> Result<Self> {
+        let heads = vec![
+            Head::new(
+                num_embeddings,
+                head_size,
+                block_size,
+                dropout_rate,
+                var_map,
+                device
+            )?;
+            num_heads
+        ];
+        let proj = linear(
+            num_embeddings,
+            num_embeddings,
+            VarBuilder::from_varmap(var_map, DType::F32, device),
+        )?;
+
+        Ok(Self {
+            heads,
+            proj,
+            dropout_rate,
+        })
+    }
+}
+
+impl Module for MultiHeadAttention {
+    fn forward(&self, xs: &Tensor) -> Result<Tensor> {
+        let concatenated = Tensor::cat(
+            &self.heads
+                .iter()
+                .map(|h| h.forward(xs).expect("Could not apply head. Diggity"))
+                .collect::<Vec<Tensor>>(),
+            D::Minus1,
+        )?;
+        let projected = self.proj.forward(&concatenated)?;
+        let out = ops::dropout(&projected, self.dropout_rate)?;
+
+        Ok(out)
+    }
+}
 
 pub struct BigramLanguageModel {
     vocab_size: usize,
@@ -65,7 +148,6 @@ pub struct BigramLanguageModel {
 }
 
 impl BigramLanguageModel {
-
     pub fn new(vocab_size: usize, hidden_size: usize, device: &Device) -> Self {
         let var_map = VarMap::new();
         let var_builder = VarBuilder::from_varmap(&var_map, DType::F32, device);
