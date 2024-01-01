@@ -84,7 +84,7 @@ impl Module for Head {
 }
 
 pub struct MultiHeadAttention {
-    heads: Vec<Head>,
+    heads: Vec<Box<Head>>,
     proj: Linear,
     dropout_rate: f32,
 }
@@ -100,14 +100,14 @@ impl MultiHeadAttention {
         device: &Device,
     ) -> Result<Self> {
         let heads = vec![
-            Head::new(
+            Box::new(Head::new(
                 num_embeddings,
                 head_size,
                 block_size,
                 dropout_rate,
                 var_map,
                 device
-            )?;
+            )?);
             num_heads
         ];
         let proj = linear(
@@ -115,6 +115,7 @@ impl MultiHeadAttention {
             num_embeddings,
             VarBuilder::from_varmap(var_map, DType::F32, device),
         )?;
+
 
         Ok(Self {
             heads,
