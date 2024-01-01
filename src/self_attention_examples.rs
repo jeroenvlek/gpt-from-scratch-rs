@@ -125,11 +125,7 @@ fn example_4_self_attention(device: &Device) -> candle_core::Result<Tensor> {
     let mut weights = q.matmul(&k.transpose(D::Minus2, D::Minus1)?)?; // (B, T, 16) @ (B, 16, T) ---> (B, T, T)
     println!("wei.shape: {:?}", weights.shape());
 
-    let neg_inf = Tensor::from_vec(
-        vec![f32::NEG_INFINITY; b * t * t],
-        Shape::from((b, t, t)),
-        device,
-    )?;
+    let neg_inf = Tensor::try_from(f32::NEG_INFINITY)?.broadcast_as(weights.shape())?;
 
     let masked_fill = Tensor::tril2(t, DType::U32, device)?.broadcast_as(weights.shape())?.where_cond(&weights, &neg_inf)?;
     println!("masked_fill.shape: {:?}", masked_fill.shape());
