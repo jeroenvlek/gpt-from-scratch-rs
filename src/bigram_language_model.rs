@@ -1,7 +1,7 @@
 use candle_core::{DType, Device, Error, IndexOp, Result, Shape, Tensor, D};
 use candle_nn::{
-    linear, linear_no_bias, loss, sequential, Activation, AdamW, Embedding, Linear, Optimizer,
-    ParamsAdamW, Sequential, VarBuilder, VarMap,
+    layer_norm, linear, linear_no_bias, loss, sequential, Activation, AdamW, Embedding, LayerNorm,
+    LayerNormConfig, Linear, Optimizer, ParamsAdamW, Sequential, VarBuilder, VarMap,
 };
 use candle_nn::{ops, Module};
 use rand::distributions::Distribution;
@@ -143,6 +143,7 @@ impl Module for MultiHeadAttention {
 }
 
 pub struct FeedForward {
+    /// a simple linear layer followed by a non-linearity
     net: Sequential,
 }
 
@@ -176,6 +177,67 @@ impl FeedForward {
 impl Module for FeedForward {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
         self.net.forward(xs)
+    }
+}
+
+pub struct Block {
+    /// Transformer block: communication followed by computation
+    multi_head_attention: MultiHeadAttention,
+    feed_forward: FeedForward,
+    layer_normalization1: LayerNorm,
+    layer_normalization2: LayerNorm,
+}
+
+impl Block {
+    pub fn new(
+        num_embeddings: usize,
+        num_heads: usize,
+        head_size: usize,
+        block_size: usize,
+        dropout_rate: f32,
+        var_map: &VarMap,
+        device: &Device,
+    ) -> Result<Self> {
+        // n_embd: embedding dimension, n_head: the number of heads we'd like
+        let multi_head_attention = MultiHeadAttention::new(
+            num_embeddings,
+            num_heads,
+            head_size,
+            block_size,
+            dropout_rate,
+            var_map,
+            device,
+        )?;
+        let feed_forward = FeedForward::new(num_embeddings, dropout_rate, var_map, device)?;
+        const EPS: f64 = 1e-5;
+        let layer_normalization1 = layer_norm(
+            num_embeddings,
+            LayerNormConfig::from(EPS),
+            VarBuilder::from_varmap(var_map, DType::F32, device),
+        )?;
+        let layer_normalization2 = layer_norm(
+            num_embeddings,
+            LayerNormConfig::from(EPS),
+            VarBuilder::from_varmap(var_map, DType::F32, device),
+        )?;
+
+        Ok(Self {
+            multi_head_attention,
+            feed_forward,
+            layer_normalization1,
+            layer_normalization2,
+        })
+    }
+}
+
+impl Module for Block {
+    fn forward(&self, xs: &Tensor) -> Result<Tensor> {
+        let norm1 = self.layer_normalization1.forward(xs)?;
+        let mha = xs.add(&self.multi_head_attention.forward(&norm1)?)?;
+        let norm2 = self.layer_normalization2.forward(&mha)?;
+        let ff = self.feed_forward.forward(&norm2)?;
+
+        Ok(ff)
     }
 }
 
