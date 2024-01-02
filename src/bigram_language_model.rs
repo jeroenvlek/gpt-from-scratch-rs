@@ -1,8 +1,7 @@
 use candle_core::{DType, Device, Error, IndexOp, Result, Shape, Tensor, D};
-use candle_nn::ops::dropout;
 use candle_nn::{
-    linear, linear_no_bias, loss, sequential, Activation, AdamW, Dropout, Embedding, Linear,
-    Optimizer, ParamsAdamW, Sequential, VarBuilder, VarMap,
+    linear, linear_no_bias, loss, sequential, Activation, AdamW, Embedding, Linear, Optimizer,
+    ParamsAdamW, Sequential, VarBuilder, VarMap,
 };
 use candle_nn::{ops, Module};
 use rand::distributions::Distribution;
@@ -168,9 +167,15 @@ impl FeedForward {
             num_embeddings,
             VarBuilder::from_varmap(var_map, DType::F32, device),
         )?);
-        net = net.add(move |xs: &Tensor| dropout(xs, dropout_rate));
+        net = net.add(move |xs: &Tensor| ops::dropout(xs, dropout_rate));
 
         Ok(Self { net })
+    }
+}
+
+impl Module for FeedForward {
+    fn forward(&self, xs: &Tensor) -> Result<Tensor> {
+        self.net.forward(xs)
     }
 }
 
