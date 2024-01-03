@@ -1,13 +1,16 @@
 use candle_core::{DType, Device, Error, IndexOp, Result, Shape, Tensor, D};
 use candle_nn::{
-    layer_norm, linear, linear_no_bias, loss, sequential, Activation, AdamW, Embedding, LayerNorm,
-    LayerNormConfig, Linear, Optimizer, ParamsAdamW, Sequential, VarBuilder, VarMap,
+    embedding, layer_norm, linear, linear_no_bias, loss, sequential, Activation, AdamW, Embedding,
+    LayerNorm, LayerNormConfig, Linear, Optimizer, ParamsAdamW, Sequential, VarBuilder, VarMap,
 };
 use candle_nn::{ops, Module};
 use rand::distributions::Distribution;
 use rand::prelude::ThreadRng;
 
 use crate::dataset::Dataset;
+
+const FEED_FORWARD_OUT_SCALE: usize = 4;
+const EPS: f64 = 1e-5;
 
 #[derive(Clone)]
 pub struct Head {
@@ -147,8 +150,6 @@ pub struct FeedForward {
     net: Sequential,
 }
 
-const FEED_FORWARD_OUT_SCALE: usize = 4;
-
 impl FeedForward {
     pub fn new(
         num_embeddings: usize,
@@ -209,7 +210,6 @@ impl Block {
             device,
         )?;
         let feed_forward = FeedForward::new(num_embeddings, dropout_rate, var_map, device)?;
-        const EPS: f64 = 1e-5;
         let layer_normalization1 = layer_norm(
             num_embeddings,
             LayerNormConfig::from(EPS),
@@ -232,37 +232,83 @@ impl Block {
 
 impl Module for Block {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
-        let norm1 = self.layer_normalization1.forward(xs)?;
-        let mha = xs.add(&self.multi_head_attention.forward(&norm1)?)?;
-        let norm2 = self.layer_normalization2.forward(&mha)?;
-        let ff = self.feed_forward.forward(&norm2)?;
+        let ln1 = self.layer_normalization1.forward(xs)?;
+        let sa = xs.add(&self.multi_head_attention.forward(&ln1)?)?;
+        let ln2 = self.layer_normalization2.forward(&sa)?;
+        let ffwd_result = sa.add(&self.feed_forward.forward(&ln2)?);
 
-        Ok(ff)
+        ffwd_result
     }
 }
 
 pub struct BigramLanguageModel {
     vocab_size: usize,
     token_embedding_table: Embedding,
+    position_embedding_table: Embedding,
+    blocks: Sequential,
+    layer_normalization_final: LayerNorm,
+    linear_head_final: Linear,
     var_map: VarMap,
     rng: ThreadRng,
 }
 
 impl BigramLanguageModel {
-    pub fn new(vocab_size: usize, hidden_size: usize, device: &Device) -> Self {
+    pub fn new(
+        vocab_size: usize,
+        num_embeddings: usize,
+        num_blocks: usize,
+        num_heads: usize,
+        block_size: usize,
+        dropout_rate: f32,
+        device: &Device,
+    ) -> Result<Self> {
+        // each token directly reads off the logits for the next token from a lookup table
         let var_map = VarMap::new();
-        let var_builder = VarBuilder::from_varmap(&var_map, DType::F32, device);
-        let embeddings = var_builder
-            .get((vocab_size, hidden_size), "embeddings")
-            .unwrap();
-        let token_embedding_table = Embedding::new(embeddings, hidden_size);
+        let token_embedding_table = embedding(
+            vocab_size,
+            num_embeddings,
+            VarBuilder::from_varmap(&var_map, DType::F32, device),
+        )?;
+        let position_embedding_table = embedding(
+            vocab_size,
+            num_embeddings,
+            VarBuilder::from_varmap(&var_map, DType::F32, device),
+        )?;
+        let mut blocks = sequential::seq();
+        let head_size = num_embeddings / num_heads;
+        for _ in 0..num_blocks {
+            blocks.add(Block::new(
+                num_embeddings,
+                num_heads,
+                head_size,
+                block_size,
+                dropout_rate,
+                &var_map,
+                device,
+            ));
+        }
+        let layer_normalization_final = layer_norm(
+            num_embeddings,
+            LayerNormConfig::from(EPS),
+            VarBuilder::from_varmap(&var_map, DType::F32, device),
+        )?; // final layer norm
+        let linear_head_final = linear(
+            num_embeddings,
+            vocab_size,
+            VarBuilder::from_varmap(&var_map, DType::F32, device),
+        )?;
         let rng = rand::thread_rng();
-        Self {
+
+        Ok(Self {
             vocab_size,
             token_embedding_table,
+            position_embedding_table,
+            blocks,
+            layer_normalization_final,
+            linear_head_final,
             var_map,
             rng,
-        }
+        })
     }
 
     /// Inspired by:
@@ -293,6 +339,7 @@ impl BigramLanguageModel {
     fn sample_multinomial(&mut self, prs: &Vec<f32>) -> Result<u32> {
         let distribution = rand::distributions::WeightedIndex::new(prs).map_err(Error::wrap)?;
         let next_token = distribution.sample(&mut self.rng) as u32;
+
         Ok(next_token)
     }
 
