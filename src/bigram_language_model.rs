@@ -343,19 +343,34 @@ impl BigramLanguageModel {
         Ok(next_token)
     }
 
-    pub fn generate(&mut self, max_new_tokens: usize, device: &Device) -> Result<Vec<u32>> {
+    pub fn generate(
+        &mut self,
+        max_new_tokens: usize,
+        block_size: usize,
+        device: &Device,
+    ) -> Result<Vec<u32>> {
+        // idx is (B, T) array of indices in the current context
         let mut generated_ids: Vec<u32> = Vec::with_capacity(max_new_tokens);
-        generated_ids.push(0); // Karpathy uses idx = torch.zeros((1, 1)
+        generated_ids.push(0); // Karpathy uses idx = torch.zeros((1, 1), but candle doesn't have on-device multinomial sampling (yet?), so we use a Vec
         for i in 1..max_new_tokens {
+            // crop idx to the last block_size tokens
+            let generated_ids_cond = generated_ids
+                .iter()
+                .skip(generated_ids.len() - block_size)
+                .cloned()
+                .collect();
             let logits = self.forward(&Tensor::from_vec(
-                generated_ids.clone(),
+                generated_ids_cond,
                 Shape::from(i),
                 device,
             )?)?;
-            let most_recent_logits = logits.i((i - 1, ..))?;
+            // focus only on the last time step
+            let most_recent_logits = logits.i((i - 1, ..))?; // becomes (B, C)
+                                                             // apply softmax to get probabilities
             let probabilities = ops::softmax(&most_recent_logits, 0)?;
-            let vec = probabilities.to_vec1()?;
-            let next_token = self.sample_multinomial(&vec)?;
+            // sample from the distribution
+            let next_token = self.sample_multinomial(&probabilities.to_vec1())?;
+            // append sampled index to the running sequence
             generated_ids.push(next_token);
         }
 
@@ -365,6 +380,18 @@ impl BigramLanguageModel {
 
 impl Module for BigramLanguageModel {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
-        self.token_embedding_table.forward(xs)
+        let (_, time_size, _) = xs.shape().dims3()?;
+
+        // xs and targets are both (B,T) tensor of integers
+        let token_embedding = self.token_embedding_table.forward(xs)?; // (B,T,C)
+        let position_embedding =
+            self.position_embedding_table
+                .forward(&Tensor::arange(0, time_size, xs.device())?)?; // (T,C)
+        let x_embed_sum = token_embedding.broadcast_add(&position_embedding)?; // (B,T,C)
+        let x_blocks = self.blocks.forward(&x_embed_sum)?; // (B,T,C)
+        let x_norm = self.layer_normalization_final(&x_blocks)?; // (B,T,C)
+        let logits = self.linear_head_final(&x_norm); // (B,T,vocab_size)
+
+        logits
     }
 }
