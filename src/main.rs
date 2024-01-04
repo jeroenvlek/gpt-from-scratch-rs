@@ -105,17 +105,26 @@ fn main() {
         }
     }
 
-    run_simple_model(&args, char_set_transcoder, device, dataset);
+    run_simple_model(&args, &char_set_transcoder, device, &mut dataset);
 
     // The mathematical trick in self-attention
     self_attention_examples::self_attention_examples(device)
         .expect("Self attention example failed!");
 
+    run_complete_model(&args, &char_set_transcoder, device, &dataset);
+}
+
+fn run_complete_model(
+    args: &Args,
+    char_set_transcoder: &CharSetTranscoder,
+    device: &Device,
+    mut dataset: &Dataset,
+) {
     // let mut bigram_model = BigramLanguageModel::new(
     //     char_set_transcoder.char_set.len(),
     //     char_set_transcoder.char_set.len(),
     //     device,
-    // );
+    // )?;
     // match bigram_model.train(dataset, args.num_epochs, 32) {
     //     Ok(_) => println!("Finished training the model"),
     //     Err(error) => eprintln!("Error training the model: {}", error)
@@ -132,9 +141,9 @@ fn main() {
 
 fn run_simple_model(
     args: &Args,
-    char_set_transcoder: CharSetTranscoder,
+    char_set_transcoder: &CharSetTranscoder,
     device: &Device,
-    mut dataset: Dataset,
+    dataset: &mut Dataset,
 ) {
     let mut simple_bigram_model = SimpleBigramLanguageModel::new(
         char_set_transcoder.char_set.len(),
