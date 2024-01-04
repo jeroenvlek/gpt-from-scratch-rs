@@ -123,7 +123,11 @@ impl Module for MultiHeadAttention {
             &self
                 .heads
                 .iter()
-                .map(|h| h.forward(xs).expect("Could not apply head. Diggity"))
+                .map(|h| {
+                    h.forward(xs)
+                        .map_err(|error| eprintln!("Error creating the model: {}", error))
+                        .expect("Could not apply head. Diggity")
+                })
                 .collect::<Vec<Tensor>>(),
             D::Minus1,
         )?;
@@ -362,7 +366,7 @@ impl BigramLanguageModel {
 
 impl Module for BigramLanguageModel {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
-        let (_, time_size, _) = xs.shape().dims3()?;
+        let (_, time_size) = xs.shape().dims2()?;
 
         // xs and targets are both (B,T) tensor of integers
         let token_embedding = self.token_embedding_table.forward(xs)?; // (B,T,C)
