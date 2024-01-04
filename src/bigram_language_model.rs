@@ -29,24 +29,12 @@ impl Head {
         head_size: usize,
         block_size: usize,
         dropout_rate: f32,
-        var_map: &VarMap,
+        var_builder: VarBuilder,
         device: &Device,
     ) -> Result<Self> {
-        let key = linear_no_bias(
-            num_embeddings,
-            head_size,
-            VarBuilder::from_varmap(var_map, DType::F32, device),
-        )?;
-        let query = linear_no_bias(
-            num_embeddings,
-            head_size,
-            VarBuilder::from_varmap(var_map, DType::F32, device),
-        )?;
-        let value = linear_no_bias(
-            num_embeddings,
-            head_size,
-            VarBuilder::from_varmap(var_map, DType::F32, device),
-        )?;
+        let key = linear_no_bias(num_embeddings, head_size, var_builder.push_prefix("key"))?;
+        let query = linear_no_bias(num_embeddings, head_size, var_builder.push_prefix("query"))?;
+        let value = linear_no_bias(num_embeddings, head_size, var_builder.push_prefix("value"))?;
         let tril = Tensor::tril2(block_size, DType::F32, device)?;
         let negative_infinity = Tensor::try_from(f32::NEG_INFINITY)?;
 
@@ -100,24 +88,25 @@ impl MultiHeadAttention {
         head_size: usize,
         block_size: usize,
         dropout_rate: f32,
-        var_map: &VarMap,
+        var_builder: VarBuilder,
         device: &Device,
     ) -> Result<Self> {
-        let heads = vec![
-            Box::new(Head::new(
+        let mut heads = Vec::with_capacity(num_heads);
+        for head_index in 0..num_heads {
+            heads.push(Box::new(Head::new(
                 num_embeddings,
                 head_size,
                 block_size,
                 dropout_rate,
-                var_map,
-                device
-            )?);
-            num_heads
-        ];
+                var_builder.push_prefix(format!("head_{}", head_index)),
+                device,
+            )?))
+        }
+
         let proj = linear(
             num_embeddings,
             num_embeddings,
-            VarBuilder::from_varmap(var_map, DType::F32, device),
+            var_builder.push_prefix("proj"),
         )?;
 
         Ok(Self {
@@ -151,23 +140,18 @@ pub struct FeedForward {
 }
 
 impl FeedForward {
-    pub fn new(
-        num_embeddings: usize,
-        dropout_rate: f32,
-        var_map: &VarMap,
-        device: &Device,
-    ) -> Result<Self> {
+    pub fn new(num_embeddings: usize, dropout_rate: f32, var_builder: VarBuilder) -> Result<Self> {
         let mut net = sequential::seq();
         net = net.add(linear(
             num_embeddings,
             FEED_FORWARD_OUT_SCALE * num_embeddings,
-            VarBuilder::from_varmap(var_map, DType::F32, device),
+            var_builder.push_prefix("linear1"),
         )?);
         net = net.add(Activation::Relu);
         net = net.add(linear(
             FEED_FORWARD_OUT_SCALE * num_embeddings,
             num_embeddings,
-            VarBuilder::from_varmap(var_map, DType::F32, device),
+            var_builder.push_prefix("linear2"),
         )?);
         net = net.add(move |xs: &Tensor| ops::dropout(xs, dropout_rate));
 
@@ -196,7 +180,7 @@ impl Block {
         head_size: usize,
         block_size: usize,
         dropout_rate: f32,
-        var_map: &VarMap,
+        var_builder: VarBuilder,
         device: &Device,
     ) -> Result<Self> {
         // n_embd: embedding dimension, n_head: the number of heads we'd like
@@ -206,19 +190,23 @@ impl Block {
             head_size,
             block_size,
             dropout_rate,
-            var_map,
+            var_builder.push_prefix("multi_head_attention"),
             device,
         )?;
-        let feed_forward = FeedForward::new(num_embeddings, dropout_rate, var_map, device)?;
+        let feed_forward = FeedForward::new(
+            num_embeddings,
+            dropout_rate,
+            var_builder.push_prefix("feed_forward"),
+        )?;
         let layer_normalization1 = layer_norm(
             num_embeddings,
             LayerNormConfig::from(EPS),
-            VarBuilder::from_varmap(var_map, DType::F32, device),
+            var_builder.push_prefix("layer_normalization1"),
         )?;
         let layer_normalization2 = layer_norm(
             num_embeddings,
             LayerNormConfig::from(EPS),
-            VarBuilder::from_varmap(var_map, DType::F32, device),
+            var_builder.push_prefix("layer_normalization2"),
         )?;
 
         Ok(Self {
@@ -264,38 +252,39 @@ impl BigramLanguageModel {
     ) -> Result<Self> {
         // each token directly reads off the logits for the next token from a lookup table
         let var_map = VarMap::new();
+        let var_builder = VarBuilder::from_varmap(&var_map, DType::F32, device);
         let token_embedding_table = embedding(
             vocab_size,
             num_embeddings,
-            VarBuilder::from_varmap(&var_map, DType::F32, device),
+            var_builder.push_prefix("token_embedding"),
         )?;
         let position_embedding_table = embedding(
             vocab_size,
             num_embeddings,
-            VarBuilder::from_varmap(&var_map, DType::F32, device),
+            var_builder.push_prefix("position_embedding"),
         )?;
         let mut blocks = sequential::seq();
         let head_size = num_embeddings / num_heads;
-        for _ in 0..num_blocks {
+        for block_index in 0..num_blocks {
             blocks = blocks.add(Block::new(
                 num_embeddings,
                 num_heads,
                 head_size,
                 block_size,
                 dropout_rate,
-                &var_map,
+                var_builder.push_prefix(format!("block_{}", block_index)),
                 device,
             )?);
         }
         let layer_normalization_final = layer_norm(
             num_embeddings,
             LayerNormConfig::from(EPS),
-            VarBuilder::from_varmap(&var_map, DType::F32, device),
+            var_builder.push_prefix("layer_normalization_final"),
         )?; // final layer norm
         let linear_head_final = linear(
             num_embeddings,
             vocab_size,
-            VarBuilder::from_varmap(&var_map, DType::F32, device),
+            var_builder.push_prefix("linear_head_final"),
         )?;
         let rng = rand::thread_rng();
 
