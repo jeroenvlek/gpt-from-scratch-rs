@@ -59,7 +59,7 @@ fn main() {
     );
 
     let encoded = char_set_transcoder.encode(raw_contents);
-    let device = &Device::Cpu;
+    let device = &Device::cuda_if_available(0).expect("Cuda or CPU should be available");
     let data = Tensor::from_vec(encoded.clone(), Shape::from(encoded.len()), device).unwrap();
     println!("Data shape: {:?}, dtype: {:?}", data.shape(), data.dtype());
     println!("First 1000 indices from tensor: {:?}", &data.i(0..1000));

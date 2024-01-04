@@ -5,6 +5,7 @@ use candle_nn::{
 };
 use candle_nn::{ops, Module};
 use rand::prelude::ThreadRng;
+use std::cmp::max;
 
 use crate::dataset::Dataset;
 use crate::sampling::sample_multinomial;
@@ -55,10 +56,12 @@ impl Module for Head {
         let q = self.query.forward(xs)?;
 
         // compute attention scores ("affinities")
-        let c = xs.shape().dims()[2]; // JV: batch, time, channel
-        let mut weights = (q.matmul(&k.transpose(D::Minus2, D::Minus1)?)? * (c as f64).powf(-0.5))?; // (B, T, C) @ (B, C, T) -> (B, T, T)
+        let (_, time_size, channel_size) = xs.shape().dims3()?; // JV: batch, time, channel
+        let mut weights =
+            (q.matmul(&k.transpose(D::Minus2, D::Minus1)?)? * (channel_size as f64).powf(-0.5))?; // (B, T, C) @ (B, C, T) -> (B, T, T)
         let masked_fill = self
             .tril
+            .i((..time_size, ..time_size))?
             .broadcast_as(Shape::from(weights.shape()))?
             .where_cond(
                 &weights,
@@ -340,22 +343,24 @@ impl BigramLanguageModel {
         generated_ids.push(0); // Karpathy uses idx = torch.zeros((1, 1), but candle doesn't have on-device multinomial sampling (yet?), so we use a Vec
         for i in 1..max_new_tokens {
             // crop idx to the last block_size tokens
-            let generated_ids_cond = generated_ids
+            let generated_ids_cond: Vec<u32> = generated_ids
                 .iter()
-                .skip(generated_ids.len() - block_size)
+                .skip(max(generated_ids.len().saturating_sub(block_size), 0))
                 .cloned()
                 .collect();
+            let generated_ids_cond_length = generated_ids_cond.len();
             let logits = self.forward(&Tensor::from_vec(
                 generated_ids_cond,
-                Shape::from(i),
+                Shape::from((1, generated_ids_cond_length)),
                 device,
             )?)?;
             // focus only on the last time step
-            let most_recent_logits = logits.i((i - 1, ..))?; // becomes (B, C)
-                                                             // apply softmax to get probabilities
+            let most_recent_logits = logits.i((0, generated_ids_cond_length - 1, ..))?; // becomes (B, C)
+                                                                                        // apply softmax to get probabilities
             let probabilities = ops::softmax(&most_recent_logits, 0)?;
             // sample from the distribution
-            let next_token = sample_multinomial(&mut self.rng, &probabilities.to_vec1()?)?;
+            let next_token =
+                sample_multinomial(&mut self.rng, &probabilities.flatten_all()?.to_vec1()?)?;
             // append sampled index to the running sequence
             generated_ids.push(next_token);
         }
