@@ -234,7 +234,7 @@ impl Module for Block {
 }
 
 pub struct BigramLanguageModel {
-    vocab_size: usize,
+    block_size: usize,
     token_embedding_table: Embedding,
     position_embedding_table: Embedding,
     blocks: Sequential,
@@ -293,7 +293,7 @@ impl BigramLanguageModel {
         let rng = rand::thread_rng();
 
         Ok(Self {
-            vocab_size,
+            block_size,
             token_embedding_table,
             position_embedding_table,
             blocks,
@@ -311,7 +311,7 @@ impl BigramLanguageModel {
 
         for epoch in 0..num_epochs {
             let (training_inputs, training_targets) =
-                dataset.random_training_batch(self.vocab_size, batch_size)?;
+                dataset.random_training_batch(self.block_size, batch_size)?;
             let logits = self.forward(&training_inputs)?;
             let (batch_size, time_size, channel_size) = logits.shape().dims3()?;
             let loss = loss::cross_entropy(
@@ -368,8 +368,10 @@ impl Module for BigramLanguageModel {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
         let (_, time_size) = xs.shape().dims2()?;
 
+        println!("xs.shape {:?}", xs.shape());
         // xs and targets are both (B,T) tensor of integers
         let token_embedding = self.token_embedding_table.forward(xs)?; // (B,T,C)
+
         let position_embedding = self.position_embedding_table.forward(&Tensor::arange(
             0,
             time_size as u32,
