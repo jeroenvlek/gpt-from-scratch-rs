@@ -37,7 +37,7 @@ impl Head {
         let query = linear_no_bias(num_embeddings, head_size, var_builder.push_prefix("query"))?;
         let value = linear_no_bias(num_embeddings, head_size, var_builder.push_prefix("value"))?;
         let tril = Tensor::tril2(block_size, DType::U32, device)?;
-        let negative_infinity = Tensor::try_from(f32::NEG_INFINITY)?;
+        let negative_infinity = Tensor::try_from(f32::NEG_INFINITY)?.to_device(device)?;
 
         Ok(Self {
             key,

@@ -1,6 +1,6 @@
-use candle_core::{Device, DType, IndexOp, Result, Shape, Tensor};
-use candle_nn::{AdamW, Embedding, loss, Optimizer, ParamsAdamW, VarBuilder, VarMap};
-use candle_nn::{Module, ops};
+use candle_core::{DType, Device, IndexOp, Result, Shape, Tensor};
+use candle_nn::{loss, AdamW, Embedding, Optimizer, ParamsAdamW, VarBuilder, VarMap};
+use candle_nn::{ops, Module};
 use rand::prelude::ThreadRng;
 
 use crate::dataset::Dataset;
@@ -33,7 +33,7 @@ impl SimpleBigramLanguageModel {
 
     /// Inspired by:
     /// https://medium.com/@igumnovnsk/simplified-rust-example-of-training-a-neural-network-based-on-the-candle-framework-by-hugging-face-cf1ccd85a936
-    pub fn train(&self, dataset: & mut Dataset, num_epochs: usize, batch_size: usize) -> Result<()> {
+    pub fn train(&self, dataset: &mut Dataset, num_epochs: usize, batch_size: usize) -> Result<()> {
         let mut optimizer = AdamW::new(self.var_map.all_vars(), ParamsAdamW::default())?;
 
         for epoch in 0..num_epochs {

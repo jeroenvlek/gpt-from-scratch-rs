@@ -1,4 +1,4 @@
-use candle_core::{D, Device, DType, IndexOp, Module, Shape, Tensor};
+use candle_core::{DType, Device, IndexOp, Module, Shape, Tensor, D};
 use candle_nn::{linear_no_bias, ops, VarBuilder, VarMap};
 
 const HEAD_SIZE: usize = 16;
@@ -125,9 +125,13 @@ fn example_4_self_attention(device: &Device) -> candle_core::Result<Tensor> {
     let mut weights = q.matmul(&k.transpose(D::Minus2, D::Minus1)?)?; // (B, T, 16) @ (B, 16, T) ---> (B, T, T)
     println!("wei.shape: {:?}", weights.shape());
 
-    let neg_inf = Tensor::try_from(f32::NEG_INFINITY)?.broadcast_as(weights.shape())?;
+    let neg_inf = Tensor::try_from(f32::NEG_INFINITY)?
+        .to_device(device)?
+        .broadcast_as(weights.shape())?;
 
-    let masked_fill = Tensor::tril2(t, DType::U32, device)?.broadcast_as(weights.shape())?.where_cond(&weights, &neg_inf)?;
+    let masked_fill = Tensor::tril2(t, DType::U32, device)?
+        .broadcast_as(weights.shape())?
+        .where_cond(&weights, &neg_inf)?;
     println!("masked_fill.shape: {:?}", masked_fill.shape());
     println!("masked_fill: {:?}", masked_fill.to_vec3::<f32>());
     weights = ops::softmax(&masked_fill, D::Minus1)?;
@@ -152,8 +156,14 @@ fn scaled_attention_example(device: &Device) -> candle_core::Result<()> {
     println!("wei.var(): {}", weights.flatten_all()?.var(0)?);
 
     let tensor = Tensor::from_vec(vec![0.1, -0.2, 0.3, -0.2, 0.5], Shape::from(5), device)?;
-    println!("softmax(tensor([0.1, -0.2, 0.3, -0.2, 0.5])): {}", ops::softmax(&tensor, D::Minus1)?);
-    println!("softmax(tensor([0.1, -0.2, 0.3, -0.2, 0.5]) * 8): {}", ops::softmax(&(tensor * 8f64)?, D::Minus1)?);
+    println!(
+        "softmax(tensor([0.1, -0.2, 0.3, -0.2, 0.5])): {}",
+        ops::softmax(&tensor, D::Minus1)?
+    );
+    println!(
+        "softmax(tensor([0.1, -0.2, 0.3, -0.2, 0.5]) * 8): {}",
+        ops::softmax(&(tensor * 8f64)?, D::Minus1)?
+    );
 
     Ok(())
 }
