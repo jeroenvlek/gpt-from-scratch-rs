@@ -277,7 +277,7 @@ impl BigramLanguageModel {
         let mut blocks = sequential::seq();
         let head_size = num_embeddings / num_heads;
         for _ in 0..num_blocks {
-            blocks.add(Block::new(
+            blocks = blocks.add(Block::new(
                 num_embeddings,
                 num_heads,
                 head_size,
@@ -285,7 +285,7 @@ impl BigramLanguageModel {
                 dropout_rate,
                 &var_map,
                 device,
-            ));
+            )?);
         }
         let layer_normalization_final = layer_norm(
             num_embeddings,
@@ -369,7 +369,7 @@ impl BigramLanguageModel {
                                                              // apply softmax to get probabilities
             let probabilities = ops::softmax(&most_recent_logits, 0)?;
             // sample from the distribution
-            let next_token = self.sample_multinomial(&probabilities.to_vec1())?;
+            let next_token = self.sample_multinomial(&probabilities.to_vec1()?)?;
             // append sampled index to the running sequence
             generated_ids.push(next_token);
         }
@@ -384,13 +384,15 @@ impl Module for BigramLanguageModel {
 
         // xs and targets are both (B,T) tensor of integers
         let token_embedding = self.token_embedding_table.forward(xs)?; // (B,T,C)
-        let position_embedding =
-            self.position_embedding_table
-                .forward(&Tensor::arange(0, time_size, xs.device())?)?; // (T,C)
+        let position_embedding = self.position_embedding_table.forward(&Tensor::arange(
+            0,
+            time_size as u32,
+            xs.device(),
+        )?)?; // (T,C)
         let x_embed_sum = token_embedding.broadcast_add(&position_embedding)?; // (B,T,C)
         let x_blocks = self.blocks.forward(&x_embed_sum)?; // (B,T,C)
-        let x_norm = self.layer_normalization_final(&x_blocks)?; // (B,T,C)
-        let logits = self.linear_head_final(&x_norm); // (B,T,vocab_size)
+        let x_norm = self.layer_normalization_final.forward(&x_blocks)?; // (B,T,C)
+        let logits = self.linear_head_final.forward(&x_norm); // (B,T,vocab_size)
 
         logits
     }
