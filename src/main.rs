@@ -6,20 +6,22 @@ use std::ops::Div;
 use candle_core::{Device, IndexOp, Module, Shape, Tensor};
 use clap::Parser;
 
+use crate::bigram_language_model::BigramLanguageModel;
 use args::Args;
 
 use crate::char_set_transcoder::CharSetTranscoder;
 use crate::dataset::Dataset;
+use crate::simple_bigram_language_model::SimpleBigramLanguageModel;
 
 mod args;
+mod bigram_language_model;
 mod char_set_transcoder;
 mod dataset;
+mod sampling;
 mod self_attention_examples;
 mod simple_bigram_language_model;
-mod bigram_language_model;
-mod sampling;
 
-fn load_file(path: String) -> std::result::Result<String, io::Error> {
+fn load_file(path: &String) -> std::result::Result<String, io::Error> {
     let mut file = File::open(path)?; // ? operator used for error propagation
 
     let mut contents = String::new();
@@ -31,7 +33,7 @@ fn load_file(path: String) -> std::result::Result<String, io::Error> {
 fn main() {
     let args = Args::parse();
 
-    let raw_contents = match load_file(args.input_path) {
+    let raw_contents = match load_file(&args.input_path) {
         Ok(contents) => {
             println!("Loaded {} characters", contents.len());
             contents
@@ -87,39 +89,68 @@ fn main() {
     }
 
     let batch_size = 4usize;
-    // let (stacked_contexts, stacked_targets) = dataset.random_training_batch(block_size, batch_size).unwrap();
-    // println!("inputs:");
-    // println!("Contexts (xb) shape: {:?}", stacked_contexts.shape());
-    // println!("targets:");
-    // println!("Contexts (yb) shape: {:?}", stacked_targets.shape());
-    //
-    // for b in 0..batch_size {
-    //     for t in 0..block_size {
-    //         let context = stacked_contexts.i(b).unwrap().i(0..t + 1).unwrap();
-    //         let target = stacked_targets.i(b).unwrap().i(t).unwrap();
-    //         println!("when input is {:?} the target: {:?}", context, target);
-    //     }
-    // }
-    //
-    // let mut simple_bigram_model = SimpleBigramLanguageModel::new(
+    let (stacked_contexts, stacked_targets) = dataset
+        .random_training_batch(block_size, batch_size)
+        .unwrap();
+    println!("inputs:");
+    println!("Contexts (xb) shape: {:?}", stacked_contexts.shape());
+    println!("targets:");
+    println!("Contexts (yb) shape: {:?}", stacked_targets.shape());
+
+    for b in 0..batch_size {
+        for t in 0..block_size {
+            let context = stacked_contexts.i(b).unwrap().i(0..t + 1).unwrap();
+            let target = stacked_targets.i(b).unwrap().i(t).unwrap();
+            println!("when input is {:?} the target: {:?}", context, target);
+        }
+    }
+
+    run_simple_model(&args, char_set_transcoder, device, dataset);
+
+    // The mathematical trick in self-attention
+    self_attention_examples::self_attention_examples(device)
+        .expect("Self attention example failed!");
+
+    // let mut bigram_model = BigramLanguageModel::new(
     //     char_set_transcoder.char_set.len(),
     //     char_set_transcoder.char_set.len(),
     //     device,
     // );
-    // match simple_bigram_model.train(dataset, args.num_epochs, 32) {
+    // match bigram_model.train(dataset, args.num_epochs, 32) {
     //     Ok(_) => println!("Finished training the model"),
     //     Err(error) => eprintln!("Error training the model: {}", error)
     // }
     //
-    // match simple_bigram_model.generate(500, device) {
+    // match bigram_model.generate(2000, device) {
     //     Ok(generated_ids) => {
     //         let decoded = char_set_transcoder.decode(generated_ids);
     //         println!("Bigram model generated: {}", decoded);
     //     }
     //     Err(error) => eprintln!("Error generating characters with bigram model: {}", error)
     // }
+}
 
-    // The mathematical trick in self-attention
-    self_attention_examples::self_attention_examples(device)
-        .expect("Self attention example failed!");
+fn run_simple_model(
+    args: &Args,
+    char_set_transcoder: CharSetTranscoder,
+    device: &Device,
+    mut dataset: Dataset,
+) {
+    let mut simple_bigram_model = SimpleBigramLanguageModel::new(
+        char_set_transcoder.char_set.len(),
+        char_set_transcoder.char_set.len(),
+        device,
+    );
+    match simple_bigram_model.train(dataset, args.num_epochs, 32) {
+        Ok(_) => println!("Finished training the model"),
+        Err(error) => eprintln!("Error training the model: {}", error),
+    }
+
+    match simple_bigram_model.generate(500, device) {
+        Ok(generated_ids) => {
+            let decoded = char_set_transcoder.decode(generated_ids);
+            println!("Bigram model generated: {}", decoded);
+        }
+        Err(error) => eprintln!("Error generating characters with bigram model: {}", error),
+    }
 }
