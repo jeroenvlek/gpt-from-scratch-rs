@@ -1,6 +1,6 @@
 use candle_core::{IndexOp, Result, Tensor};
-use rand::rngs::ThreadRng;
 use rand::Rng;
+use rand::rngs::ThreadRng;
 
 #[derive(Debug)]
 pub struct Dataset {

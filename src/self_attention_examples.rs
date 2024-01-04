@@ -1,4 +1,4 @@
-use candle_core::{DType, Device, IndexOp, Module, Shape, Tensor, D};
+use candle_core::{D, Device, DType, IndexOp, Module, Shape, Tensor};
 use candle_nn::{linear_no_bias, ops, VarBuilder, VarMap};
 
 const HEAD_SIZE: usize = 16;

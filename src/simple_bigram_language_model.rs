@@ -1,13 +1,13 @@
-use candle_core::{DType, Device, Error, IndexOp, Result, Shape, Tensor};
-use candle_nn::{loss, AdamW, Embedding, Optimizer, ParamsAdamW, VarBuilder, VarMap};
-use candle_nn::{ops, Module};
-use rand::distributions::Distribution;
+use candle_core::{Device, DType, IndexOp, Result, Shape, Tensor};
+use candle_nn::{AdamW, Embedding, loss, Optimizer, ParamsAdamW, VarBuilder, VarMap};
+use candle_nn::{Module, ops};
 use rand::prelude::ThreadRng;
 
 use crate::dataset::Dataset;
+use crate::sampling::sample_multinomial;
 
 pub struct SimpleBigramLanguageModel {
-/// Even though Karpathy calls the final bigram model simple, this is the intermediate version in the notebook.
+    /// Even though Karpathy calls the final bigram model simple, this is the intermediate version in the notebook.
     vocab_size: usize,
     token_embedding_table: Embedding,
     var_map: VarMap,
@@ -15,7 +15,6 @@ pub struct SimpleBigramLanguageModel {
 }
 
 impl SimpleBigramLanguageModel {
-
     pub fn new(vocab_size: usize, hidden_size: usize, device: &Device) -> Self {
         let var_map = VarMap::new();
         let var_builder = VarBuilder::from_varmap(&var_map, DType::F32, device);
@@ -57,12 +56,6 @@ impl SimpleBigramLanguageModel {
         Ok(())
     }
 
-    fn sample_multinomial(&mut self, prs: &Vec<f32>) -> Result<u32> {
-        let distribution = rand::distributions::WeightedIndex::new(prs).map_err(Error::wrap)?;
-        let next_token = distribution.sample(&mut self.rng) as u32;
-        Ok(next_token)
-    }
-
     pub fn generate(&mut self, max_new_tokens: usize, device: &Device) -> Result<Vec<u32>> {
         let mut generated_ids: Vec<u32> = Vec::with_capacity(max_new_tokens);
         generated_ids.push(0); // Karpathy uses idx = torch.zeros((1, 1)
@@ -75,7 +68,7 @@ impl SimpleBigramLanguageModel {
             let most_recent_logits = logits.i((i - 1, ..))?;
             let probabilities = ops::softmax(&most_recent_logits, 0)?;
             let vec = probabilities.to_vec1()?;
-            let next_token = self.sample_multinomial(&vec)?;
+            let next_token = sample_multinomial(&mut self.rng, &vec)?;
             generated_ids.push(next_token);
         }
 

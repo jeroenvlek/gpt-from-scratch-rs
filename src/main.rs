@@ -17,6 +17,7 @@ mod dataset;
 mod self_attention_examples;
 mod simple_bigram_language_model;
 mod bigram_language_model;
+mod sampling;
 
 fn load_file(path: String) -> std::result::Result<String, io::Error> {
     let mut file = File::open(path)?; // ? operator used for error propagation

@@ -1,13 +1,13 @@
-use candle_core::{DType, Device, Error, IndexOp, Result, Shape, Tensor, D};
+use candle_core::{D, Device, DType, IndexOp, Result, Shape, Tensor};
 use candle_nn::{
-    embedding, layer_norm, linear, linear_no_bias, loss, sequential, Activation, AdamW, Embedding,
-    LayerNorm, LayerNormConfig, Linear, Optimizer, ParamsAdamW, Sequential, VarBuilder, VarMap,
+    Activation, AdamW, embedding, Embedding, layer_norm, LayerNorm, LayerNormConfig, linear, Linear,
+    linear_no_bias, loss, Optimizer, ParamsAdamW, sequential, Sequential, VarBuilder, VarMap,
 };
-use candle_nn::{ops, Module};
-use rand::distributions::Distribution;
+use candle_nn::{Module, ops};
 use rand::prelude::ThreadRng;
 
 use crate::dataset::Dataset;
+use crate::sampling::sample_multinomial;
 
 const FEED_FORWARD_OUT_SCALE: usize = 4;
 const EPS: f64 = 1e-5;
@@ -336,13 +336,6 @@ impl BigramLanguageModel {
         Ok(())
     }
 
-    fn sample_multinomial(&mut self, prs: &Vec<f32>) -> Result<u32> {
-        let distribution = rand::distributions::WeightedIndex::new(prs).map_err(Error::wrap)?;
-        let next_token = distribution.sample(&mut self.rng) as u32;
-
-        Ok(next_token)
-    }
-
     pub fn generate(
         &mut self,
         max_new_tokens: usize,
@@ -369,7 +362,7 @@ impl BigramLanguageModel {
                                                              // apply softmax to get probabilities
             let probabilities = ops::softmax(&most_recent_logits, 0)?;
             // sample from the distribution
-            let next_token = self.sample_multinomial(&probabilities.to_vec1()?)?;
+            let next_token = sample_multinomial(&mut self.rng, &probabilities.to_vec1()?)?;
             // append sampled index to the running sequence
             generated_ids.push(next_token);
         }
