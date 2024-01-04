@@ -35,7 +35,7 @@ impl Head {
         let key = linear_no_bias(num_embeddings, head_size, var_builder.push_prefix("key"))?;
         let query = linear_no_bias(num_embeddings, head_size, var_builder.push_prefix("query"))?;
         let value = linear_no_bias(num_embeddings, head_size, var_builder.push_prefix("value"))?;
-        let tril = Tensor::tril2(block_size, DType::F32, device)?;
+        let tril = Tensor::tril2(block_size, DType::U32, device)?;
         let negative_infinity = Tensor::try_from(f32::NEG_INFINITY)?;
 
         Ok(Self {
@@ -368,7 +368,6 @@ impl Module for BigramLanguageModel {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
         let (_, time_size) = xs.shape().dims2()?;
 
-        println!("xs.shape {:?}", xs.shape());
         // xs and targets are both (B,T) tensor of integers
         let token_embedding = self.token_embedding_table.forward(xs)?; // (B,T,C)
 
