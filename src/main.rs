@@ -142,7 +142,7 @@ fn run_complete_model(
     .map_err(|error| eprintln!("Error creating the model: {}", error))
     .expect("Should have created the model");
 
-    match bigram_model.train(dataset, args.num_epochs, batch_size) {
+    match bigram_model.train(dataset, args.num_epochs_complete, batch_size) {
         Ok(_) => println!("Finished training the model"),
         Err(error) => eprintln!("Error training the model: {}", error),
     }
@@ -168,7 +168,7 @@ fn run_simple_model(
         char_set_transcoder.char_set.len(),
         device,
     );
-    match simple_bigram_model.train(dataset, args.num_epochs, 32) {
+    match simple_bigram_model.train(dataset, args.num_epochs_simple, 32) {
         Ok(_) => println!("Finished training the model"),
         Err(error) => eprintln!("Error training the model: {}", error),
     }
