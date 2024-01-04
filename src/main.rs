@@ -105,38 +105,56 @@ fn main() {
         }
     }
 
-    run_simple_model(&args, &char_set_transcoder, device, &mut dataset);
+    // run_simple_model(&args, &char_set_transcoder, device, &mut dataset);
 
     // The mathematical trick in self-attention
     self_attention_examples::self_attention_examples(device)
         .expect("Self attention example failed!");
 
-    run_complete_model(&args, &char_set_transcoder, device, &dataset);
+    // Full finished code, for reference
+    run_complete_model(&args, &char_set_transcoder, device, &mut dataset);
 }
 
 fn run_complete_model(
     args: &Args,
     char_set_transcoder: &CharSetTranscoder,
     device: &Device,
-    mut dataset: &Dataset,
+    dataset: &mut Dataset,
 ) {
-    // let mut bigram_model = BigramLanguageModel::new(
-    //     char_set_transcoder.char_set.len(),
-    //     char_set_transcoder.char_set.len(),
-    //     device,
-    // )?;
-    // match bigram_model.train(dataset, args.num_epochs, 32) {
-    //     Ok(_) => println!("Finished training the model"),
-    //     Err(error) => eprintln!("Error training the model: {}", error)
-    // }
-    //
-    // match bigram_model.generate(2000, device) {
-    //     Ok(generated_ids) => {
-    //         let decoded = char_set_transcoder.decode(generated_ids);
-    //         println!("Bigram model generated: {}", decoded);
-    //     }
-    //     Err(error) => eprintln!("Error generating characters with bigram model: {}", error)
-    // }
+    // hyperparameters
+    let batch_size = 16usize; // how many independent sequences will we process in parallel?
+    let block_size = 32usize; // what is the maximum context length for predictions?
+    let num_embdeddings = 64usize;
+    let num_heads = 4usize;
+    let num_blocks = 4usize; // JV: n_layer
+    let dropout_rate = 0.0f32;
+    // ------------
+
+    let mut bigram_model = BigramLanguageModel::new(
+        char_set_transcoder.char_set.len(),
+        num_embdeddings,
+        num_blocks,
+        num_heads,
+        block_size,
+        dropout_rate,
+        device,
+    )
+    .map_err(|error| eprintln!("Error creating the model: {}", error))
+    .expect("Should have created the model");
+
+    match bigram_model.train(dataset, args.num_epochs, batch_size) {
+        Ok(_) => println!("Finished training the model"),
+        Err(error) => eprintln!("Error training the model: {}", error),
+    }
+
+    const MAX_NEW_TOKENS: usize = 2000;
+    match bigram_model.generate(MAX_NEW_TOKENS, block_size, device) {
+        Ok(generated_ids) => {
+            let decoded = char_set_transcoder.decode(generated_ids);
+            println!("Bigram model generated: {}", decoded);
+        }
+        Err(error) => eprintln!("Error generating characters with bigram model: {}", error),
+    }
 }
 
 fn run_simple_model(
