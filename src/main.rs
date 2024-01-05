@@ -11,6 +11,7 @@ use args::Args;
 
 use crate::char_set_transcoder::CharSetTranscoder;
 use crate::dataset::Dataset;
+use crate::self_attention_examples::self_attention_examples;
 use crate::simple_bigram_language_model::SimpleBigramLanguageModel;
 
 mod args;
@@ -109,12 +110,14 @@ fn main() {
     // run_simple_model(&args, &char_set_transcoder, device, &mut dataset);
 
     // The mathematical trick in self-attention
-    self_attention_examples::self_attention_examples(device)
+    self_attention_examples(device)
         .map_err(|error| eprintln!("Error executing the self attention examples: {}", error))
-        .expect("Self attention example failed!");
+        .expect("Self attention example should not fail");
 
     // Full finished code, for reference
-    run_complete_model(&args, &char_set_transcoder, device, &mut dataset);
+    run_complete_model(&args, &char_set_transcoder, device, &mut dataset)
+        .map_err(|error| eprintln!("Error running the complete model: {}", error))
+        .expect("Running the complete model should not fail should not fail");
 }
 
 fn run_complete_model(
@@ -122,7 +125,7 @@ fn run_complete_model(
     char_set_transcoder: &CharSetTranscoder,
     device: &Device,
     dataset: &mut Dataset,
-) {
+) -> candle_core::Result<()> {
     // hyperparameters
     let batch_size = 16usize; // how many independent sequences will we process in parallel?
     let block_size = 32usize; // what is the maximum context length for predictions?
@@ -140,23 +143,16 @@ fn run_complete_model(
         block_size,
         dropout_rate,
         device,
-    )
-    .map_err(|error| eprintln!("Error creating the model: {}", error))
-    .expect("Should have created the model");
+    )?;
 
-    match bigram_model.train(dataset, args.num_epochs_complete, batch_size) {
-        Ok(_) => println!("Finished training the model"),
-        Err(error) => eprintln!("Error training the model: {}", error),
-    }
+    bigram_model.train(dataset, args.num_epochs_complete, batch_size)?;
 
-    const MAX_NEW_TOKENS: usize = 2000;
-    match bigram_model.generate(MAX_NEW_TOKENS, block_size, device) {
-        Ok(generated_ids) => {
-            let decoded = char_set_transcoder.decode(generated_ids);
-            println!("Bigram model generated: {}", decoded);
-        }
-        Err(error) => eprintln!("Error generating characters with bigram model: {}", error),
-    }
+    let token_ids = bigram_model.generate(args.max_new_tokens, block_size, device)?;
+    let decoded_tokens = char_set_transcoder.decode(token_ids);
+
+    println!("Generated string: {}", decoded_tokens);
+
+    Ok(())
 }
 
 fn run_simple_model(
@@ -164,22 +160,17 @@ fn run_simple_model(
     char_set_transcoder: &CharSetTranscoder,
     device: &Device,
     dataset: &mut Dataset,
-) {
+) -> candle_core::Result<()> {
     let mut simple_bigram_model = SimpleBigramLanguageModel::new(
         char_set_transcoder.char_set.len(),
         char_set_transcoder.char_set.len(),
         device,
     );
-    match simple_bigram_model.train(dataset, args.num_epochs_simple, 32) {
-        Ok(_) => println!("Finished training the model"),
-        Err(error) => eprintln!("Error training the model: {}", error),
-    }
 
-    match simple_bigram_model.generate(500, device) {
-        Ok(generated_ids) => {
-            let decoded = char_set_transcoder.decode(generated_ids);
-            println!("Bigram model generated: {}", decoded);
-        }
-        Err(error) => eprintln!("Error generating characters with bigram model: {}", error),
-    }
+    let batch_size = 32;
+    simple_bigram_model.train(dataset, args.num_epochs_simple, batch_size)?;
+
+    simple_bigram_model.generate(args.max_new_tokens, device)?;
+
+    Ok(())
 }
