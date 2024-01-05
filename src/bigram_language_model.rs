@@ -133,7 +133,7 @@ impl Module for MultiHeadAttention {
                 })
                 .collect::<Vec<Tensor>>(),
             D::Minus1,
-        )?;
+        )?.contiguous()?; // JV: This was necessary for Cuda to fix the stride/contiguous error. It doesn't occur on the CPU
         let projected = self.proj.forward(&concatenated)?;
         let out = ops::dropout(&projected, self.dropout_rate)?;
 
