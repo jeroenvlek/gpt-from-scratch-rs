@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.3.1" , features = ["cudnn"]}
-candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.3.1" , features = ["cuda"]}
+candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.3.2" , features = ["cuda"]}
+candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.3.2" , features = ["cuda"]}
 anyhow = "1.0.75"
 clap = { version = "4.4.10", features = ["derive"] }
 rand = "0.8.5"
