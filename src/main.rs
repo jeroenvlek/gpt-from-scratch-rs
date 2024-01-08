@@ -23,7 +23,7 @@ mod self_attention_examples;
 mod simple_bigram_language_model;
 
 fn load_file(path: &String) -> std::result::Result<String, io::Error> {
-    let mut file = File::open(path)?; // ? operator used for error propagation
+    let mut file = File::open(path)?;
 
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
