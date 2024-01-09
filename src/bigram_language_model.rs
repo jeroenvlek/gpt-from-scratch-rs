@@ -356,7 +356,7 @@ impl BigramLanguageModel {
             )?)?;
             // focus only on the last time step
             let most_recent_logits = logits.i((0, generated_ids_cond_length - 1, ..))?; // becomes (B, C)
-                                                                                        // apply softmax to get probabilities
+            // apply softmax to get probabilities
             let probabilities = ops::softmax(&most_recent_logits, 0)?;
             // sample from the distribution
             let next_token =
